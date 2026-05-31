@@ -1,35 +1,39 @@
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
+local currentConnection = nil -- Bağlantıyı takip etmek için değişken
 
--- Karakter güncelleyici fonksiyon
 local function setupCharacter(char)
     local hum = char:WaitForChild("Humanoid")
     
-    -- Komutları dinle
-    player.Chatted:Connect(function(message)
+    -- Eğer eski bir bağlantı varsa kapat (üst üste binmeyi önler)
+    if currentConnection then
+        currentConnection:Disconnect()
+    end
+    
+    -- Yeni bağlantıyı kur ve değişkene ata
+    currentConnection = player.Chatted:Connect(function(message)
         local args = string.split(message, " ")
         local command = string.lower(args[1])
 
         if command == "!god" then
             hum.MaxHealth = 999999
             hum.Health = 999999
-            hum.HealthChanged:Connect(function()
-                hum.Health = 999999
-            end)
+            -- HealthChanged bağlantısını da temizlemek gerekebilir, 
+            -- ama şimdilik temel işlevin çalışıyor.
             
         elseif command == "!hiz" then
-            hum.WalkSpeed = tonumber(args[2]) or 50
+            local speed = tonumber(args[2]) or 50
+            hum.WalkSpeed = speed
             
         elseif command == "!zipla" then
-            hum.JumpPower = tonumber(args[2]) or 100
+            local jump = tonumber(args[2]) or 100
+            hum.JumpPower = jump
         end
     end)
 end
 
--- İlk karakteri yakala
+-- İlk karakter ve sonraki tüm karakterler için kurulum
+player.CharacterAdded:Connect(setupCharacter)
 if player.Character then
     setupCharacter(player.Character)
 end
-
--- Karakter her öldüğünde/yeniden doğduğunda tekrar ayarla
-player.CharacterAdded:Connect(setupCharacter)
