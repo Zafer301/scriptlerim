@@ -1,9 +1,93 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
 local scriptCalisiyor = true
 local noclipBaglantisi = nil
+
+-- ==========================================
+-- SCRIPT SIFIRLAMA VE DURDURMA FONKSİYONU
+-- ==========================================
+local function ScriptiDurdur()
+    if not scriptCalisiyor then return end
+    scriptCalisiyor = false
+    
+    -- Noclip bağlantısını kopar
+    if noclipBaglantisi then
+        noclipBaglantisi:Disconnect()
+        noclipBaglantisi = nil
+    end
+    
+    -- Karakteri temizle ve çarpışmaları aç
+    local character = LocalPlayer.Character
+    if character then
+        local rootPart = character:FindFirstChild("HumanoidRootPart")
+        if rootPart then
+            local spin = rootPart:FindFirstChild("TrollSpini")
+            local sabitleyici = rootPart:FindFirstChild("TrollSabitleyici")
+            local yon = rootPart:FindFirstChild("TrollYön")
+            if spin then spin:Destroy() end
+            if sabitleyici then sabitleyici:Destroy() end
+            if yon then yon:Destroy() end
+        end
+        for _, parca in ipairs(character:GetDescendants()) do
+            if parca:IsA("BasePart") then
+                parca.CanCollide = true
+            end
+        end
+    end
+    
+    -- Ekrandaki arayüzleri temizle
+    if LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("TrollDuyuruKutusu") then
+        LocalPlayer.PlayerGui.TrollDuyuruKutusu:Destroy()
+    end
+    if LocalPlayer.PlayerGui:FindFirstChild("TrollKontrolPaneli") then
+        LocalPlayer.PlayerGui.TrollKontrolPaneli:Destroy()
+    end
+end
+
+-- Klavyeden "X" tuşuna basınca durdur
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.X then
+        ScriptiDurdur()
+    end
+end)
+
+-- ==========================================
+-- EKRANA DURDURMA BUTONU EKLEME (Mobil/PC)
+-- ==========================================
+local function DurdurmaButonuOlustur()
+    if LocalPlayer.PlayerGui:FindFirstChild("TrollKontrolPaneli") then
+        LocalPlayer.PlayerGui.TrollKontrolPaneli:Destroy()
+    end
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "TrollKontrolPaneli"
+    gui.ResetOnSpawn = false
+    gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+    local buton = Instance.new("TextButton")
+    buton.Size = UDim2.new(0, 120, 0, 50)
+    buton.Position = UDim2.new(0.5, -60, 0.1, 0) -- Ekranın üst ortasında durur
+    buton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+    buton.BorderSizePixel = 2
+    buton.Text = "KAPAT (X)"
+    buton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    buton.Font = Enum.Font.SourceSansBold
+    buton.TextSize = 20
+    buton.Parent = gui
+
+    -- Butonun köşelerini yuvarla
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, 8)
+    uiCorner.Parent = buton
+
+    buton.MouseButton1Click:Connect(function()
+        ScriptiDurdur()
+    end)
+end
+DurdurmaButonuOlustur()
 
 -- ==========================================
 -- 1. ADIM: GELİŞMİŞ VE GÜVENLİ NOCLIP
@@ -60,7 +144,7 @@ local function SpiniAktifEt()
                 local bodyVelocity = Instance.new("BodyAngularVelocity")
                 bodyVelocity.Name = "TrollSpini"
                 bodyVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
-                bodyVelocity.AngularVelocity = Vector3.new(0, 95000, 0) -- İSTEDİĞİN GİBİ: 95.000 SPIN GÜCÜ!
+                bodyVelocity.AngularVelocity = Vector3.new(0, 95000, 0) 
                 bodyVelocity.Parent = rootPart
             end
             task.wait(0.1)
@@ -116,32 +200,7 @@ while scriptCalisiyor do
         local duyuruGui = EkranaYaziYaz("OYUNCU YOK")
         task.wait(2)
         if duyuruGui then duyuruGui:Destroy() end
-        
-        task.wait(1)
-        scriptCalisiyor = false 
-        
-        if noclipBaglantisi then
-            noclipBaglantisi:Disconnect()
-            noclipBaglantisi = nil
-        end
-        
-        local character = LocalPlayer.Character
-        if character then
-            local rootPart = character:FindFirstChild("HumanoidRootPart")
-            if rootPart then
-                local spin = rootPart:FindFirstChild("TrollSpini")
-                local sabitleyici = rootPart:FindFirstChild("TrollSabitleyici")
-                local yon = rootPart:FindFirstChild("TrollYön")
-                if spin then spin:Destroy() end
-                if sabitleyici then sabitleyici:Destroy() end
-                if yon then yon:Destroy() end
-            end
-            for _, parca in ipairs(character:GetDescendants()) do
-                if parca:IsA("BasePart") then
-                    parca.CanCollide = true
-                end
-            end
-        end
+        ScriptiDurdur()
         break 
     end
     
@@ -155,14 +214,10 @@ while scriptCalisiyor do
             local kurbanRoot = player.Character.HumanoidRootPart
             local bizimRoot = character.HumanoidRootPart
             
-            -- Kurbanın CFrame'ini (baktığı yönü) baz alarak tam 1 tık (yaklaşık 1.5 - 2 studs) arkasını hesaplıyoruz
-            -- LookVector'ın tersi (gerisi) yönünde konumlanıyoruz
+            -- Tam 1 tık (1.8 studs) arkası
             local arkasindakiKonum = kurbanRoot.CFrame * CFrame.new(0, 0, 1.8) 
             
-            -- Mıknatıslı takip yok! Sadece arkasındaki konuma tek seferlik ışınlanıyoruz
             bizimRoot.CFrame = arkasindakiKonum
-            
-            -- Darbenin (çarpışmanın) sunucu tarafından algılanması için çok kısa bir süre bekliyoruz
             task.wait(0.12) 
         end
     end
