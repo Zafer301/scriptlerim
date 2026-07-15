@@ -7,19 +7,17 @@ local scriptCalisiyor = true
 local noclipBaglantisi = nil
 
 -- ==========================================
--- 1. ADIM: NOCLIP (DUVARLARDAN GEÇME) SİSTEMİ
+-- 1. ADIM: GELİŞMİŞ VE GÜVENLİ NOCLIP
 -- ==========================================
 local function NoclipAktifEt()
-    -- Eğer önceden açık bir noclip varsa önce onu kapat
     if noclipBaglantisi then
         noclipBaglantisi:Disconnect()
     end
     
-    -- Her fizik adımında karakterin parçalarının çarpışmasını kapatır
     noclipBaglantisi = RunService.Stepped:Connect(function()
         if scriptCalisiyor and LocalPlayer.Character then
             for _, parca in ipairs(LocalPlayer.Character:GetDescendants()) do
-                if parca:IsA("BasePart") and parca.CanCollide == true then
+                if parca:IsA("BasePart") then
                     parca.CanCollide = false
                 end
             end
@@ -27,11 +25,10 @@ local function NoclipAktifEt()
     end)
 end
 
--- Noclip'i hemen başlat
 NoclipAktifEt()
 
 -- ==========================================
--- 2. ADIM: EKRANDA "OYUNCU YOK" YAZDIRAN MOBİL SİSTEM
+-- 2. ADIM: EKRANDA "OYUNCU YOK" DUYURUSU
 -- ==========================================
 local function EkranaYaziYaz(gosterilecekMetin)
     if LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("TrollDuyuruKutusu") then
@@ -61,7 +58,7 @@ local function EkranaYaziYaz(gosterilecekMetin)
 end
 
 -- ==========================================
--- 3. ADIM: 3500 SPEED SPIN (FLING) DÖNGÜSÜ
+-- 3. ADIM: 3500 SPEED SPIN (KAYMAYI ÖNLEYEN FİZİK)
 -- ==========================================
 local function SpiniAktifEt()
     task.spawn(function()
@@ -70,6 +67,9 @@ local function SpiniAktifEt()
             local rootPart = character:WaitForChild("HumanoidRootPart", 5)
             
             if rootPart and scriptCalisiyor then
+                -- Karakterin kendi kendine uçmasını engellemek için hızını sıfırla
+                rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                
                 for _, child in ipairs(rootPart:GetChildren()) do
                     if child.Name == "TrollSpini" then
                         child:Destroy()
@@ -79,22 +79,21 @@ local function SpiniAktifEt()
                 local bodyVelocity = Instance.new("BodyAngularVelocity")
                 bodyVelocity.Name = "TrollSpini"
                 bodyVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
-                bodyVelocity.AngularVelocity = Vector3.new(0, 3500, 0) -- 3500 Spin Hızı!
+                bodyVelocity.AngularVelocity = Vector3.new(0, 3500, 0)
                 bodyVelocity.Parent = rootPart
             end
-            task.wait(0.5)
+            task.wait(0.1) -- Hızlı güncelleme ile kaymayı engelle
         end
     end)
 end
 
--- Spin hilesini başlat
 SpiniAktifEt()
 
 -- ==========================================
--- 4. ADIM: OTOMATİK IŞINLANMA VE SİSTEMİ KAPATMA DÖNGÜSÜ
+-- 4. ADIM: KONTROLLÜ YAVAŞ IŞINLANMA SİSTEMİ
 -- ==========================================
-local GecisSuresi = 1.0
-local BeklemeSuresi = 0.5
+local GecisSuresi = 1.0 -- Oyuncuya varış süresi (1 saniye)
+local BeklemeSuresi = 0.5 -- Yanında bekleme süresi
 
 local function PruzsuzIsinlan(hedefCFrame)
     local character = LocalPlayer.Character
@@ -102,7 +101,8 @@ local function PruzsuzIsinlan(hedefCFrame)
     local rootPart = character.HumanoidRootPart
     
     local mesafe = (rootPart.Position - hedefCFrame.Position).Magnitude
-    local dynamicTime = math.max(GecisSuresi, mesafe / 200) 
+    -- YAVAŞLATILDI: Mesafe / 50 yaparak süzülme hızını düşürdük, artık kontrolsüz fırlamayacak!
+    local dynamicTime = math.max(GecisSuresi, mesafe / 50) 
     
     local tweenInfo = TweenInfo.new(dynamicTime, Enum.EasingStyle.Linear)
     local tween = TweenService:Create(rootPart, tweenInfo, {CFrame = hedefCFrame})
@@ -121,20 +121,15 @@ while scriptCalisiyor do
         end
     end
     
-    -- SUNUCUDA BAŞKA OYUNCU YOKSA ÇALIŞACAK KISIM
+    -- OYUNCU YOKSA KAPAT
     if aktifOyuncuSayisi == 0 then
-        -- 1. Ekrana kırmızı, kocaman "OYUNCU YOK" yazar
         local duyuruGui = EkranaYaziYaz("OYUNCU YOK")
-        
-        -- 2. Bu yazı ekranda tam 2 saniye kalır, sonra kaybolur
         task.wait(2)
         if duyuruGui then duyuruGui:Destroy() end
         
-        -- 3. Yazı gittikten 1 saniye sonra her şeyi durdur
         task.wait(1)
         scriptCalisiyor = false 
         
-        -- Noclip'i kapat ve çarpışmaları normale döndür
         if noclipBaglantisi then
             noclipBaglantisi:Disconnect()
             noclipBaglantisi = nil
@@ -147,7 +142,6 @@ while scriptCalisiyor do
                 local spin = rootPart:FindFirstChild("TrollSpini")
                 if spin then spin:Destroy() end
             end
-            -- Karakter parçalarının çarpışmasını tekrar aç (Normal fizik)
             for _, parca in ipairs(character:GetDescendants()) do
                 if parca:IsA("BasePart") then
                     parca.CanCollide = true
@@ -157,12 +151,14 @@ while scriptCalisiyor do
         break 
     end
     
-    -- Sunucuda oyuncular varsa sırayla trolleme döngüsü başlar
+    -- OYUNCULARA SIRAYLA GİT
     for _, player in ipairs(oyuncular) do
         if not scriptCalisiyor then break end
         
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
             local hedefRoot = player.Character.HumanoidRootPart
+            
+            -- Oyuncunun tam arkasında ve onunla aynı hizada duracak şekilde CFrame
             local hedefCFrame = hedefRoot.CFrame * CFrame.new(0, 0, 3)
             
             PruzsuzIsinlan(hedefCFrame)
@@ -170,5 +166,5 @@ while scriptCalisiyor do
         end
     end
     
-    task.wait(1)
+    task.wait(0.5)
 end
