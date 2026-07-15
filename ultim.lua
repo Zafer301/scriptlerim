@@ -218,7 +218,7 @@ while scriptCalisiyor do
             local arkasindakiKonum = kurbanRoot.CFrame * CFrame.new(0, 0, 1.8) 
             
             bizimRoot.CFrame = arkasindakiKonum
-            task.wait(0.12) 
+            task.wait(1) 
         end
     end
     
