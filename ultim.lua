@@ -5,7 +5,7 @@ local LocalPlayer = Players.LocalPlayer
 local scriptCalisiyor = true
 local noclipBaglantisi = nil
 
--- Yapay Spin Açısı (Sürekli güncellenecek)
+-- Yapay Spin Açısı
 local yapayDonisAcisi = 0
 
 -- ==========================================
@@ -22,6 +22,7 @@ local function NoclipAktifEt()
             end
             local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             if root then
+                -- Sadece ana gövdenin çarpışmasını açık tutuyoruz ki temas gerçekleşsin!
                 root.CanCollide = true
             end
         end
@@ -103,17 +104,21 @@ local function EkranaYaziYaz(gosterilecekMetin)
 end
 
 -- ==========================================
--- 4. ADIM: YAPAY DÖNÜŞLÜ IŞINLANMA FONKSİYONU
+-- 4. ADIM: SÜRTÜNMELİ IŞINLANMA FONKSİYONU
 -- ==========================================
-local function AnindaDonerekIsinlan(hedefPozisyon)
+local function TemasliIsinlan(hedefPozisyon)
     local character = LocalPlayer.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
     
-    -- Dönüş açısını her karede hızlıca arttırıyoruz
     yapayDonisAcisi = (yapayDonisAcisi + 90) % 360
     
-    -- Oyuncunun tam konumunu alıyor ve kendi etrafımızda yapay olarak dönmüş CFrame'i uyguluyoruz
-    local yeniCFrame = CFrame.new(hedefPozisyon) * CFrame.Angles(0, math.rad(yapayDonisAcisi), 0)
+    -- Fiziksel temas (sürtünme) yaratmak için pozisyona milimetrik yapay bir titreşim/sapma ekliyoruz.
+    -- Bu sayede karakter doğrudan tam ortada hayalet gibi durmaz, sürekli adama çarpıyormuş gibi yapar.
+    local sapmaX = (math.random(-10, 10) / 100)
+    local sapmaZ = (math.random(-10, 10) / 100)
+    local yeniPozisyon = hedefPozisyon + Vector3.new(sapmaX, 0.1, sapmaZ)
+    
+    local yeniCFrame = CFrame.new(yeniPozisyon) * CFrame.Angles(0, math.rad(yapayDonisAcisi), 0)
     character.HumanoidRootPart.CFrame = yeniCFrame
 end
 
@@ -166,7 +171,7 @@ while scriptCalisiyor do
         break 
     end
     
-    -- SIRAYLA OYUNCULARIN TAM İÇİNE IŞINLAN VE YAPAY DÖNÜŞLE TAKİP ET
+    -- SIRAYLA OYUNCULARIN TAM İÇİNE IŞINLAN VE YAPAY TEMASLA FIRLAT
     for _, player in ipairs(oyuncular) do
         if not scriptCalisiyor then break end
         
@@ -177,11 +182,10 @@ while scriptCalisiyor do
                 if not scriptCalisiyor then break end
                 
                 if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                    -- Oyuncunun tam pozisyonunu alıyoruz (Dönüş açısını biz kendimiz manipüle edeceğiz)
                     local hedefPozisyon = player.Character.HumanoidRootPart.Position
-                    AnindaDonerekIsinlan(hedefPozisyon)
+                    TemasliIsinlan(hedefPozisyon)
                 else
-                    break -- Eğer öldüyse takibi hemen bırak
+                    break 
                 end
                 
                 RunService.Heartbeat:Wait()
