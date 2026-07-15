@@ -5,6 +5,9 @@ local LocalPlayer = Players.LocalPlayer
 local scriptCalisiyor = true
 local noclipBaglantisi = nil
 
+-- Yapay Spin Açısı (Sürekli güncellenecek)
+local yapayDonisAcisi = 0
+
 -- ==========================================
 -- 1. ADIM: GELİŞMİŞ VE GÜVENLİ NOCLIP
 -- ==========================================
@@ -100,18 +103,24 @@ local function EkranaYaziYaz(gosterilecekMetin)
 end
 
 -- ==========================================
--- 4. ADIM: ANLIK (SALİSELİK) IŞINLANMA FONKSİYONU
+-- 4. ADIM: YAPAY DÖNÜŞLÜ IŞINLANMA FONKSİYONU
 -- ==========================================
-local function AnindaIsinlan(hedefCFrame)
+local function AnindaDonerekIsinlan(hedefPozisyon)
     local character = LocalPlayer.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
-    character.HumanoidRootPart.CFrame = hedefCFrame
+    
+    -- Dönüş açısını her karede hızlıca arttırıyoruz
+    yapayDonisAcisi = (yapayDonisAcisi + 90) % 360
+    
+    -- Oyuncunun tam konumunu alıyor ve kendi etrafımızda yapay olarak dönmüş CFrame'i uyguluyoruz
+    local yeniCFrame = CFrame.new(hedefPozisyon) * CFrame.Angles(0, math.rad(yapayDonisAcisi), 0)
+    character.HumanoidRootPart.CFrame = yeniCFrame
 end
 
 -- ==========================================
--- 5. ADIM: ANA KONTROL DÖNGÜSÜ
+-- 5. ADIM: MIKNATISLI TAKİP VE ANA KONTROL DÖNGÜSÜ
 -- ==========================================
-local BeklemeSuresi = 1.5 -- İstediğin gibi: Fırlatma süresi 1.5 saniye
+local BeklemeSuresi = 1.5 -- Takip ve fırlatma süresi 1.5 saniye
 
 while scriptCalisiyor do
     local oyuncular = Players:GetPlayers()
@@ -157,19 +166,26 @@ while scriptCalisiyor do
         break 
     end
     
-    -- SIRAYLA OYUNCULARIN TAM İÇİNE ANINDA IŞINLAN VE 1.5 SANİYE BEKLE
+    -- SIRAYLA OYUNCULARIN TAM İÇİNE IŞINLAN VE YAPAY DÖNÜŞLE TAKİP ET
     for _, player in ipairs(oyuncular) do
         if not scriptCalisiyor then break end
         
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local hedefRoot = player.Character.HumanoidRootPart
-            local hedefCFrame = hedefRoot.CFrame 
+            local baslangicZamani = os.clock()
             
-            -- Oyuncunun tam içine anında ışınlan
-            AnindaIsinlan(hedefCFrame)
-            
-            -- Mıknatıs döngüsü kaldırıldı! Sadece 1.5 saniye boyunca o noktada durup spin atar:
-            task.wait(BeklemeSuresi) 
+            while os.clock() - baslangicZamani < BeklemeSuresi do
+                if not scriptCalisiyor then break end
+                
+                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    -- Oyuncunun tam pozisyonunu alıyoruz (Dönüş açısını biz kendimiz manipüle edeceğiz)
+                    local hedefPozisyon = player.Character.HumanoidRootPart.Position
+                    AnindaDonerekIsinlan(hedefPozisyon)
+                else
+                    break -- Eğer öldüyse takibi hemen bırak
+                end
+                
+                RunService.Heartbeat:Wait()
+            end
         end
     end
     
