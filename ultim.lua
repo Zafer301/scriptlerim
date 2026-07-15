@@ -100,7 +100,7 @@ local function EkranaYaziYaz(gosterilecekMetin)
 end
 
 -- ==========================================
--- 4. ADIM: ANLIK (SALİSELİK) IŞINLANMA FONKSİYONU
+-- 4. ADIM: ANLIK IŞINLANMA FONKSİYONU
 -- ==========================================
 local function AnindaIsinlan(hedefCFrame)
     local character = LocalPlayer.Character
@@ -109,9 +109,9 @@ local function AnindaIsinlan(hedefCFrame)
 end
 
 -- ==========================================
--- 5. ADIM: ANA KONTROL DÖNGÜSÜ
+-- 5. ADIM: MIKNATISLI TAKİP VE ANA KONTROL DÖNGÜSÜ
 -- ==========================================
-local BeklemeSuresi = 1.2 -- İSTEDİĞİN GİBİ: Yanında bekleme süresi 1.2 saniyeye çıkarıldı!
+local BeklemeSuresi = 1.5 -- İSTEDİĞİN GİBİ: Takip ve fırlatma süresi 1.5 saniye yapıldı!
 
 while scriptCalisiyor do
     local oyuncular = Players:GetPlayers()
@@ -157,19 +157,28 @@ while scriptCalisiyor do
         break 
     end
     
-    -- SIRAYLA OYUNCULARIN TAM ARKASINA ANINDA IŞINLAN
+    -- SIRAYLA OYUNCULARIN TAM İÇİNE IŞINLAN VE 1.5 SANİYE BOYUNCA YAPILIP TAKİP ET
     for _, player in ipairs(oyuncular) do
         if not scriptCalisiyor then break end
         
         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local hedefRoot = player.Character.HumanoidRootPart
-            local hedefCFrame = hedefRoot.CFrame * CFrame.new(0, 0, 3) -- Oyuncunun 3 birim arkası
+            -- MIKNATIS DÖNGÜSÜ: Oyuncu yürüse bile 1.5 saniye boyunca tam içinden ayrılmayız!
+            local baslangicZamani = os.clock()
             
-            -- ANINDA IŞINLAN!
-            AnindaIsinlan(hedefCFrame)
-            
-            -- 1.2 saniye boyunca spinle adama yapış ve fırlat!
-            task.wait(BeklemeSuresi) 
+            while os.clock() - baslangicZamani < BeklemeSuresi do
+                if not scriptCalisiyor then break end
+                
+                -- Hedef hala oyundaysa ve karakteri varsa takip etmeye devam et
+                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    local hedefCFrame = player.Character.HumanoidRootPart.CFrame
+                    AnindaIsinlan(hedefCFrame)
+                else
+                    break -- Eğer adam fırlayıp öldüyse veya çıktıysa takibi erken bitir
+                end
+                
+                -- Milisaniyelik gecikme ile ekran yenileme hızında takip et (Kusursuz yapışma sağlar)
+                RunService.Heartbeat:Wait()
+            end
         end
     end
     
