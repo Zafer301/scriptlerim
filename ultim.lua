@@ -19,7 +19,6 @@ local function NoclipAktifEt()
             end
             local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             if root then
-                -- Fiziksel temas kurulması için gövde çarpışmasını açık tutuyoruz
                 root.CanCollide = true
             end
         end
@@ -28,7 +27,7 @@ end
 NoclipAktifEt()
 
 -- ==========================================
--- 2. ADIM: GÜVENLİ VE GÜÇLÜ SPIN
+-- 2. ADIM: DEVASA SPIN GÜCÜ (95.000)
 -- ==========================================
 local function SpiniAktifEt()
     task.spawn(function()
@@ -61,7 +60,7 @@ local function SpiniAktifEt()
                 local bodyVelocity = Instance.new("BodyAngularVelocity")
                 bodyVelocity.Name = "TrollSpini"
                 bodyVelocity.MaxTorque = Vector3.new(0, math.huge, 0)
-                bodyVelocity.AngularVelocity = Vector3.new(0, 9500, 0) 
+                bodyVelocity.AngularVelocity = Vector3.new(0, 95000, 0) -- İSTEDİĞİN GİBİ: 95.000 SPIN GÜCÜ!
                 bodyVelocity.Parent = rootPart
             end
             task.wait(0.1)
@@ -71,7 +70,7 @@ end
 SpiniAktifEt()
 
 -- ==========================================
--- 3. ADIM: EKRANDA "OYUNCU YOK" DUYURUSU
+-- 3. ADIM: EKRANDA DUYURU FONKSİYONU
 -- ==========================================
 local function EkranaYaziYaz(gosterilecekMetin)
     if LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("TrollDuyuruKutusu") then
@@ -101,7 +100,7 @@ local function EkranaYaziYaz(gosterilecekMetin)
 end
 
 -- ==========================================
--- 4. ADIM: ANA KONTROL VE VOID DRAG DÖNGÜSÜ
+-- 4. ADIM: TEK VURUŞLUK ARKADAN FLING DÖNGÜSÜ
 -- ==========================================
 while scriptCalisiyor do
     local oyuncular = Players:GetPlayers()
@@ -113,7 +112,6 @@ while scriptCalisiyor do
         end
     end
     
-    -- OYUNCU YOKSA KAPANMA
     if aktifOyuncuSayisi == 0 then
         local duyuruGui = EkranaYaziYaz("OYUNCU YOK")
         task.wait(2)
@@ -147,7 +145,7 @@ while scriptCalisiyor do
         break 
     end
     
-    -- SIRAYLA OYUNCULARI AL VE YERİN 1000 STUDS ALTINA SÜRÜKLE
+    -- SIRAYLA HER OYUNCUNUN 1 TIK ARKASINA IŞINLAN VE DARBEYİ VUR
     for _, player in ipairs(oyuncular) do
         if not scriptCalisiyor then break end
         
@@ -157,25 +155,15 @@ while scriptCalisiyor do
             local kurbanRoot = player.Character.HumanoidRootPart
             local bizimRoot = character.HumanoidRootPart
             
-            -- 1. Aşama: Önce oyuncunun tam içine ışınlanıp fiziksel temas kuruyoruz
-            bizimRoot.CFrame = kurbanRoot.CFrame
-            task.wait(0.1) -- Temasın (Network Ownership) bizde kalması için saliselik bekleme
+            -- Kurbanın CFrame'ini (baktığı yönü) baz alarak tam 1 tık (yaklaşık 1.5 - 2 studs) arkasını hesaplıyoruz
+            -- LookVector'ın tersi (gerisi) yönünde konumlanıyoruz
+            local arkasindakiKonum = kurbanRoot.CFrame * CFrame.new(0, 0, 1.8) 
             
-            -- 2. Aşama: Temas kurulduğu an oyuncuyu 1000 birim yerin altına sürüklüyoruz
-            local baslangicZamani = os.clock()
-            while os.clock() - baslangicZamani < 1.3 do -- Sürükleme süresi 1.3 saniye
-                if not scriptCalisiyor or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then break end
-                
-                -- Hedefin bulunduğu konumdan 1000 studs aşağısına kendimizi ışınlayarak onu da aşağı çekiyoruz
-                local yeniPozisyon = kurbanRoot.Position - Vector3.new(0, 1000, 0)
-                bizimRoot.CFrame = CFrame.new(yeniPozisyon)
-                
-                RunService.Heartbeat:Wait()
-            end
+            -- Mıknatıslı takip yok! Sadece arkasındaki konuma tek seferlik ışınlanıyoruz
+            bizimRoot.CFrame = arkasindakiKonum
             
-            -- Oyuncu Void'de elendikten sonra hemen yukarı (orijinal seviyemize) geri dönüyoruz
-            bizimRoot.CFrame = CFrame.new(bizimRoot.Position.X, 10, bizimRoot.Position.Z)
-            task.wait(0.1)
+            -- Darbenin (çarpışmanın) sunucu tarafından algılanması için çok kısa bir süre bekliyoruz
+            task.wait(0.12) 
         end
     end
     
