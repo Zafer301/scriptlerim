@@ -5,9 +5,6 @@ local LocalPlayer = Players.LocalPlayer
 local scriptCalisiyor = true
 local noclipBaglantisi = nil
 
--- Yapay Spin Açısı
-local yapayDonisAcisi = 0
-
 -- ==========================================
 -- 1. ADIM: GELİŞMİŞ VE GÜVENLİ NOCLIP
 -- ==========================================
@@ -22,7 +19,7 @@ local function NoclipAktifEt()
             end
             local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             if root then
-                -- Sadece ana gövdenin çarpışmasını açık tutuyoruz ki temas gerçekleşsin!
+                -- Fiziksel temas kurulması için gövde çarpışmasını açık tutuyoruz
                 root.CanCollide = true
             end
         end
@@ -31,7 +28,7 @@ end
 NoclipAktifEt()
 
 -- ==========================================
--- 2. ADIM: GÜVENLİ VE GÜÇLÜ SPIN (9500 GÜÇ)
+-- 2. ADIM: GÜVENLİ VE GÜÇLÜ SPIN
 -- ==========================================
 local function SpiniAktifEt()
     task.spawn(function()
@@ -104,29 +101,8 @@ local function EkranaYaziYaz(gosterilecekMetin)
 end
 
 -- ==========================================
--- 4. ADIM: SÜRTÜNMELİ IŞINLANMA FONKSİYONU
+-- 4. ADIM: ANA KONTROL VE VOID DRAG DÖNGÜSÜ
 -- ==========================================
-local function TemasliIsinlan(hedefPozisyon)
-    local character = LocalPlayer.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
-    
-    yapayDonisAcisi = (yapayDonisAcisi + 90) % 360
-    
-    -- Fiziksel temas (sürtünme) yaratmak için pozisyona milimetrik yapay bir titreşim/sapma ekliyoruz.
-    -- Bu sayede karakter doğrudan tam ortada hayalet gibi durmaz, sürekli adama çarpıyormuş gibi yapar.
-    local sapmaX = (math.random(-10, 10) / 100)
-    local sapmaZ = (math.random(-10, 10) / 100)
-    local yeniPozisyon = hedefPozisyon + Vector3.new(sapmaX, 0.1, sapmaZ)
-    
-    local yeniCFrame = CFrame.new(yeniPozisyon) * CFrame.Angles(0, math.rad(yapayDonisAcisi), 0)
-    character.HumanoidRootPart.CFrame = yeniCFrame
-end
-
--- ==========================================
--- 5. ADIM: MIKNATISLI TAKİP VE ANA KONTROL DÖNGÜSÜ
--- ==========================================
-local BeklemeSuresi = 1.5 -- Takip ve fırlatma süresi 1.5 saniye
-
 while scriptCalisiyor do
     local oyuncular = Players:GetPlayers()
     local aktifOyuncuSayisi = 0
@@ -137,7 +113,7 @@ while scriptCalisiyor do
         end
     end
     
-    -- OYUNCU YOKSA SCRIPT KENDİNİ KAPATIR
+    -- OYUNCU YOKSA KAPANMA
     if aktifOyuncuSayisi == 0 then
         local duyuruGui = EkranaYaziYaz("OYUNCU YOK")
         task.wait(2)
@@ -171,25 +147,35 @@ while scriptCalisiyor do
         break 
     end
     
-    -- SIRAYLA OYUNCULARIN TAM İÇİNE IŞINLAN VE YAPAY TEMASLA FIRLAT
+    -- SIRAYLA OYUNCULARI AL VE YERİN 1000 STUDS ALTINA SÜRÜKLE
     for _, player in ipairs(oyuncular) do
         if not scriptCalisiyor then break end
         
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local baslangicZamani = os.clock()
+        local character = LocalPlayer.Character
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and character and character:FindFirstChild("HumanoidRootPart") then
             
-            while os.clock() - baslangicZamani < BeklemeSuresi do
-                if not scriptCalisiyor then break end
+            local kurbanRoot = player.Character.HumanoidRootPart
+            local bizimRoot = character.HumanoidRootPart
+            
+            -- 1. Aşama: Önce oyuncunun tam içine ışınlanıp fiziksel temas kuruyoruz
+            bizimRoot.CFrame = kurbanRoot.CFrame
+            task.wait(0.1) -- Temasın (Network Ownership) bizde kalması için saliselik bekleme
+            
+            -- 2. Aşama: Temas kurulduğu an oyuncuyu 1000 birim yerin altına sürüklüyoruz
+            local baslangicZamani = os.clock()
+            while os.clock() - baslangicZamani < 1.3 do -- Sürükleme süresi 1.3 saniye
+                if not scriptCalisiyor or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then break end
                 
-                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                    local hedefPozisyon = player.Character.HumanoidRootPart.Position
-                    TemasliIsinlan(hedefPozisyon)
-                else
-                    break 
-                end
+                -- Hedefin bulunduğu konumdan 1000 studs aşağısına kendimizi ışınlayarak onu da aşağı çekiyoruz
+                local yeniPozisyon = kurbanRoot.Position - Vector3.new(0, 1000, 0)
+                bizimRoot.CFrame = CFrame.new(yeniPozisyon)
                 
                 RunService.Heartbeat:Wait()
             end
+            
+            -- Oyuncu Void'de elendikten sonra hemen yukarı (orijinal seviyemize) geri dönüyoruz
+            bizimRoot.CFrame = CFrame.new(bizimRoot.Position.X, 10, bizimRoot.Position.Z)
+            task.wait(0.1)
         end
     end
     
