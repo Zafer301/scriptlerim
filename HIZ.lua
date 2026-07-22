@@ -1,29 +1,32 @@
--- Delta ve diğer executorlar için hız hilesi ve arayüz kodu
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 
--- Ana ScreenGui oluşturma
+-- Önceki açık kalan GUI'yi temizle
+if game:GetService("CoreGui"):FindFirstChild("DeltaSpeedGui") then
+    game:GetService("CoreGui").DeltaSpeedGui:Destroy()
+end
+
+-- Ana Ekran
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "DeltaSpeedGui"
 ScreenGui.Parent = game:CoreGui
 ScreenGui.ResetOnSpawn = false
 
--- Ana Çerçeve (Ekranın köşesinde)
+-- Sağ Üst Köşe Çerçeve
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 220, 0, 150)
-MainFrame.Position = UDim2.new(1, -230, 0, 20) -- Sağ üst köşe
+MainFrame.Position = UDim2.new(1, -230, 0, 20)
 MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 MainFrame.BorderSizePixel = 0
 MainFrame.Parent = ScreenGui
 
--- Köşeleri yuvarlatma
 local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 8)
 UICorner.Parent = MainFrame
 
--- Başlık / Tamamen Kapa Butonu
+-- Tamamen Kapa Butonu
 local CloseButton = Instance.new("TextButton")
 CloseButton.Size = UDim2.new(1, -10, 0, 35)
 CloseButton.Position = UDim2.new(0, 5, 0, 5)
@@ -38,7 +41,7 @@ local CloseCorner = Instance.new("UICorner")
 CloseCorner.CornerRadius = UDim.new(0, 6)
 CloseCorner.Parent = CloseButton
 
--- Hız Göstergesi Etiketi
+-- Hız Göstergesi
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, -10, 0, 25)
 StatusLabel.Position = UDim2.new(0, 5, 0, 45)
@@ -49,7 +52,7 @@ StatusLabel.TextSize = 13
 StatusLabel.Font = Enum.Font.SourceSans
 StatusLabel.Parent = MainFrame
 
--- Kaydırma Çubuğu Arka Planı (Slider Track)
+-- Kaydırma Çubuğu Arka Planı
 local SliderBar = Instance.new("Frame")
 SliderBar.Size = UDim2.new(1, -20, 0, 10)
 SliderBar.Position = UDim2.new(0, 10, 0, 95)
@@ -61,7 +64,7 @@ local BarCorner = Instance.new("UICorner")
 BarCorner.CornerRadius = UDim.new(1, 0)
 BarCorner.Parent = SliderBar
 
--- Kaydırma Düğmesi (Slider Button)
+-- Kaydırma Düğmesi
 local SliderButton = Instance.new("TextButton")
 SliderButton.Size = UDim2.new(0, 20, 0, 20)
 SliderButton.Position = UDim2.new(0, 0, 0.5, -10)
@@ -73,26 +76,26 @@ local ButtonCorner = Instance.new("UICorner")
 ButtonCorner.CornerRadius = UDim.new(1, 0)
 ButtonCorner.Parent = SliderButton
 
--- Mantık ve Fonksiyonlar
+-- Hız Ayarları
 local minSpeed = 16
 local maxSpeed = 150
 local currentSpeed = 16
 local dragging = false
 
--- Slider sürükleme olayı
+-- Slider Sürükleme Mantığı (Mobil dokunma ve Bilgisayar mouse desteği bir arada)
 SliderButton.MouseButton1Down:Connect(function()
     dragging = true
 end)
 
-game:GetService("UserInputService").InputEnded:Connect(function(input)
+UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = false
     end
 end)
 
-game:GetService("UserInputService").InputChanged:Connect(function(input)
+UserInputService.InputChanged:Connect(function(input)
     if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local mousePos = game:GetService("UserInputService"):GetMouseLocation()
+        local mousePos = UserInputService:GetMouseLocation()
         local barPos = SliderBar.AbsolutePosition
         local barSize = SliderBar.AbsoluteSize
         
@@ -100,13 +103,12 @@ game:GetService("UserInputService").InputChanged:Connect(function(input)
         local percentage = relativeX / barSize.X
         
         SliderButton.Position = UDim2.new(percentage, -10, 0.5, -10)
-        
         currentSpeed = math.floor(minSpeed + (maxSpeed - minSpeed) * percentage)
         StatusLabel.Text = "Hız: " .. currentSpeed
     end
 end)
 
--- Hızı sürekli uygulama döngüsü
+-- Hızı Sabitleme ve Uygulama Döngüsü
 local connection
 connection = RunService.RenderStepped:Connect(function()
     pcall(function()
@@ -123,7 +125,7 @@ CloseButton.MouseButton1Click:Connect(function()
     end
     pcall(function()
         if player.Character and player.Character:FindFirstChild("Humanoid") then
-        player.Character.Humanoid.WalkSpeed = 16 -- Normale döndür
+            player.Character.Humanoid.WalkSpeed = 16
         end
     end)
     ScreenGui:Destroy()
