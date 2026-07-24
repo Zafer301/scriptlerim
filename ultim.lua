@@ -154,7 +154,7 @@ end
 SpiniAktifEt()
 
 -- ==========================================
--- 3. ADIM: EKRANDA DUYURU FONKSİYONU
+-- 3. ADIM: Ekranda Duyuru Fonksiyonu
 -- ==========================================
 local function EkranaYaziYaz(gosterilecekMetin)
     if LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("TrollDuyuruKutusu") then
@@ -184,7 +184,7 @@ local function EkranaYaziYaz(gosterilecekMetin)
 end
 
 -- ==========================================
--- 4. ADIM: TEK VURUŞLUK ARKADAN FLING DÖNGÜSÜ
+-- 4. ADIM: OYUNCUNUN TAM İÇİNE IŞINLANMA DÖNGÜSÜ
 -- ==========================================
 while scriptCalisiyor do
     local oyuncular = Players:GetPlayers()
@@ -204,7 +204,7 @@ while scriptCalisiyor do
         break 
     end
     
-    -- SIRAYLA HER OYUNCUNUN 1 TIK ARKASINA IŞINLAN VE DARBEYİ VUR
+    -- SIRAYLA HER OYUNCUNUN TAM İÇİNE IŞINLAN VE Çarpıştır
     for _, player in ipairs(oyuncular) do
         if not scriptCalisiyor then break end
         
@@ -214,11 +214,9 @@ while scriptCalisiyor do
             local kurbanRoot = player.Character.HumanoidRootPart
             local bizimRoot = character.HumanoidRootPart
             
-            -- Tam 1 tık (1.8 studs) arkası
-            local arkasindakiKonum = kurbanRoot.CFrame * CFrame.new(0, 0, 1.8) 
-            
-            bizimRoot.CFrame = arkasindakiKonum
-            task.wait(1) 
+            -- Tam oyuncunun içine (0 sapma ile direkt koordinatlarına) ışınlanma
+            bizimRoot.CFrame = kurbanRoot.CFrame
+            task.wait(0.6) -- İçinde kalma süresi (hızlı geçiş için ayarlandı)
         end
     end
     
