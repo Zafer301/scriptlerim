@@ -216,7 +216,7 @@ while scriptCalisiyor do
             
             -- Tam oyuncunun içine (0 sapma ile direkt koordinatlarına) ışınlanma
             bizimRoot.CFrame = kurbanRoot.CFrame
-            task.wait(0.6) -- İçinde kalma süresi (hızlı geçiş için ayarlandı)
+            task.wait(1.3) -- İçinde kalma süresi (hızlı geçiş için ayarlandı)
         end
     end
     
