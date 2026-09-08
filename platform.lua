@@ -7,7 +7,7 @@ local humanoid = character:WaitForChild("Humanoid")
 humanoid.JumpPower = 0
 humanoid.UseJumpPower = true
 
--- Karakter sıfırlandığında (ölüp dirildiğinde) zıplamayı kapalı tutmaya devam et
+-- Karakter sıfırlandığında zıplamayı kapalı tutmaya devam et
 player.CharacterAdded:Connect(function(newChar)
     character = newChar
     humanoidRootPart = newChar:WaitForChild("HumanoidRootPart")
@@ -24,17 +24,17 @@ platform.CanCollide = true
 platform.Transparency = 0.5
 platform.Parent = workspace
 
--- Başlangıç yüksekliğini karakterin doğduğu yere sabitle (Aşağı düşme sorununu çözer)
+-- Başlangıç yüksekliğini sabitle
 local lockedHeight = humanoidRootPart.Position.Y - 3
 
--- GUI Oluşturma
+-- GUI Oluşturma (TextBox sığması için yüksekliği biraz arttırdık)
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "PlatformControlGUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 140, 0, 180)
+frame.Size = UDim2.new(0, 140, 0, 230)
 frame.Position = UDim2.new(0, 20, 0, 150)
 frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 frame.BorderSizePixel = 0
@@ -48,11 +48,11 @@ uiCorner.Parent = frame
 
 -- (+) Butonu (Yukarı)
 local upButton = Instance.new("TextButton")
-upButton.Size = UDim2.new(0, 120, 0, 40)
+upButton.Size = UDim2.new(0, 120, 0, 35)
 upButton.Position = UDim2.new(0, 10, 0, 10)
 upButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 upButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-upButton.TextSize = 20
+upButton.TextSize = 18
 upButton.Font = Enum.Font.SourceSansBold
 upButton.Text = "+ (Yukarı)"
 upButton.Parent = frame
@@ -60,20 +60,34 @@ Instance.new("UICorner", upButton).CornerRadius = UDim.new(0, 6)
 
 -- (-) Butonu (Aşağı)
 local downButton = Instance.new("TextButton")
-downButton.Size = UDim2.new(0, 120, 0, 40)
-downButton.Position = UDim2.new(0, 10, 0, 60)
+downButton.Size = UDim2.new(0, 120, 0, 35)
+downButton.Position = UDim2.new(0, 10, 0, 55)
 downButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 downButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-downButton.TextSize = 20
+downButton.TextSize = 18
 downButton.Font = Enum.Font.SourceSansBold
 downButton.Text = "- (Aşağı)"
 downButton.Parent = frame
 Instance.new("UICorner", downButton).CornerRadius = UDim.new(0, 6)
 
+-- Hız Girdi Kutusu (TextBox)
+local speedBox = Instance.new("TextBox")
+speedBox.Size = UDim2.new(0, 120, 0, 35)
+speedBox.Position = UDim2.new(0, 10, 0, 100)
+speedBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+speedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedBox.PlaceholderText = "Hız Yaz (örn: 50)"
+speedBox.Text = ""
+speedBox.TextSize = 14
+speedBox.Font = Enum.Font.SourceSansBold
+speedBox.ClearTextOnFocus = false
+speedBox.Parent = frame
+Instance.new("UICorner", speedBox).CornerRadius = UDim.new(0, 6)
+
 -- Kapat Butonu (X)
 local closeButton = Instance.new("TextButton")
-closeButton.Size = UDim2.new(0, 120, 0, 40)
-closeButton.Position = UDim2.new(0, 10, 0, 110)
+closeButton.Size = UDim2.new(0, 120, 0, 35)
+closeButton.Position = UDim2.new(0, 10, 0, 145)
 closeButton.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 closeButton.TextSize = 16
@@ -81,6 +95,14 @@ closeButton.Font = Enum.Font.SourceSansBold
 closeButton.Text = "Kapat"
 closeButton.Parent = frame
 Instance.new("UICorner", closeButton).CornerRadius = UDim.new(0, 6)
+
+-- TextBox Hız Değiştirme Mantığı
+speedBox.FocusLost:Connect(function(enterPressed)
+    local newSpeed = tonumber(speedBox.Text)
+    if newSpeed and humanoid then
+        humanoid.WalkSpeed = newSpeed
+    end
+end)
 
 -- Basılı tutma durumları
 local movingUp = false
@@ -97,7 +119,10 @@ downButton.MouseLeave:Connect(function() movingDown = false end)
 local isRunning = true
 closeButton.MouseButton1Click:Connect(function()
     isRunning = false
-    if humanoid then humanoid.JumpPower = 50 end -- Kapatınca zıplamayı normale döndür
+    if humanoid then 
+        humanoid.JumpPower = 50 
+        humanoid.WalkSpeed = 16 -- Kapatınca hızı normale döndür
+    end
     platform:Destroy()
     screenGui:Destroy()
 end)
@@ -114,7 +139,6 @@ game:GetService("RunService").RenderStepped:Connect(function(dt)
     end
     
     if humanoidRootPart and platform then
-        -- X ve Z ekseninde karakteri takip eder, Y eksenini (yüksekliği) tamamen sabit tutar
         platform.CFrame = CFrame.new(humanoidRootPart.Position.X, lockedHeight, humanoidRootPart.Position.Z)
     end
 end)
