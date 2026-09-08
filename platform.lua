@@ -1,6 +1,20 @@
 local player = game.Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+local humanoid = character:WaitForChild("Humanoid")
+
+-- Karakterin zıplamasını engelle (Sıkışmayı önlemek için)
+humanoid.JumpPower = 0
+humanoid.UseJumpPower = true
+
+-- Karakter sıfırlandığında (ölüp dirildiğinde) zıplamayı kapalı tutmaya devam et
+player.CharacterAdded:Connect(function(newChar)
+    character = newChar
+    humanoidRootPart = newChar:WaitForChild("HumanoidRootPart")
+    humanoid = newChar:WaitForChild("Humanoid")
+    humanoid.JumpPower = 0
+    humanoid.UseJumpPower = true
+end)
 
 -- Platformu oluştur
 local platform = Instance.new("Part")
@@ -10,7 +24,8 @@ platform.CanCollide = true
 platform.Transparency = 0.5
 platform.Parent = workspace
 
-local heightOffset = -3
+-- Başlangıç yüksekliğini karakterin doğduğu yere sabitle (Aşağı düşme sorununu çözer)
+local lockedHeight = humanoidRootPart.Position.Y - 3
 
 -- GUI Oluşturma
 local screenGui = Instance.new("ScreenGui")
@@ -71,45 +86,35 @@ Instance.new("UICorner", closeButton).CornerRadius = UDim.new(0, 6)
 local movingUp = false
 local movingDown = false
 
-upButton.MouseButton1Down:Connect(function()
-    movingUp = true
-end)
-upButton.MouseButton1Up:Connect(function()
-    movingUp = false
-end)
-upButton.MouseLeave:Connect(function()
-    movingUp = false
-end)
+upButton.MouseButton1Down:Connect(function() movingUp = true end)
+upButton.MouseButton1Up:Connect(function() movingUp = false end)
+upButton.MouseLeave:Connect(function() movingUp = false end)
 
-downButton.MouseButton1Down:Connect(function()
-    movingDown = true
-end)
-downButton.MouseButton1Up:Connect(function()
-    movingDown = false
-end)
-downButton.MouseLeave:Connect(function()
-    movingDown = false
-end)
+downButton.MouseButton1Down:Connect(function() movingDown = true end)
+downButton.MouseButton1Up:Connect(function() movingDown = false end)
+downButton.MouseLeave:Connect(function() movingDown = false end)
 
 local isRunning = true
 closeButton.MouseButton1Click:Connect(function()
     isRunning = false
+    if humanoid then humanoid.JumpPower = 50 end -- Kapatınca zıplamayı normale döndür
     platform:Destroy()
     screenGui:Destroy()
 end)
 
--- Takip ve Hareket Döngüsü
+-- Takip ve Sabitleme Döngüsü
 game:GetService("RunService").RenderStepped:Connect(function(dt)
     if not isRunning then return end
     
+    -- Butona basılı tutulduğunda yüksekliği değiştir
     if movingUp then
-        heightOffset = heightOffset + (15 * dt)
+        lockedHeight = lockedHeight + (25 * dt)
     elseif movingDown then
-        heightOffset = heightOffset - (15 * dt)
+        lockedHeight = lockedHeight - (25 * dt)
     end
     
     if humanoidRootPart and platform then
-        local targetPosition = humanoidRootPart.Position + Vector3.new(0, heightOffset, 0)
-        platform.CFrame = CFrame.new(targetPosition.X, targetPosition.Y, targetPosition.Z)
+        -- X ve Z ekseninde karakteri takip eder, Y eksenini (yüksekliği) tamamen sabit tutar
+        platform.CFrame = CFrame.new(humanoidRootPart.Position.X, lockedHeight, humanoidRootPart.Position.Z)
     end
 end)
