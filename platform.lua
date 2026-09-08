@@ -20,13 +20,13 @@ local platform = nil
 local isPlatformActive = true
 local lockedHeight = humanoidRootPart.Position.Y - 3
 
--- Platformu oluşturma fonksiyonu (CanCollide false yapılır ki hiçbir şeye çarpmasın, içinden geçsin)
+-- Platformu oluşturma (CanCollide true olmalı ki karakter üstünde durabilsin)
 local function createPlatform()
     if platform then platform:Destroy() end
     platform = Instance.new("Part")
     platform.Size = Vector3.new(50, 1, 50)
     platform.Anchored = true
-    platform.CanCollide = false -- Diğer objelere ve duvarlara çarpmaz, içinden geçer!
+    platform.CanCollide = true -- Karakterin üzerinden düşmemesi için katı
     platform.Transparency = 0.5
     platform.Parent = workspace
 end
@@ -155,7 +155,7 @@ downButton.MouseButton1Up:Connect(function() movingDown = false end)
 downButton.MouseLeave:Connect(function() movingDown = false end)
 
 local isRunning = true
-closeButton.MouseButton1Click:Connect(function()
+closeButton.MouseButton1Click:Connect(function`()
     isRunning = false
     if humanoid then 
         humanoid.JumpPower = 50 
@@ -165,7 +165,7 @@ closeButton.MouseButton1Click:Connect(function()
     screenGui:Destroy()
 end)
 
--- Takip ve Sabitleme Döngüsü (Karakteri üstünde tutar, duvarlardan etkilenmez)
+-- Takip Döngüsü
 game:GetService("RunService").RenderStepped:Connect(function(dt)
     if not isRunning or not isPlatformActive then return end
     
