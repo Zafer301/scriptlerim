@@ -7,24 +7,16 @@ local humanoid = character:WaitForChild("Humanoid")
 humanoid.JumpPower = 0
 humanoid.UseJumpPower = true
 
-player.CharacterAdded:Connect(function(newChar)
-    character = newChar
-    humanoidRootPart = newChar:WaitForChild("HumanoidRootPart")
-    humanoid = newChar:WaitForChild("Humanoid")
-    humanoid.JumpPower = 0
-    humanoid.UseJumpPower = true
-end)
-
 -- Değişkenler
 local platform = nil
 local isPlatformActive = true
 local lockedHeight = humanoidRootPart.Position.Y - 3
 
--- Platformu oluşturma fonksiyonu (Boyutu daha küçük tutuldu)
+-- Platformu oluşturma fonksiyonu
 local function createPlatform()
     if platform then platform:Destroy() end
     platform = Instance.new("Part")
-    platform.Size = Vector3.new(15, 1, 15) -- 50x50 yerine daha küçük (15x15) yapıldı
+    platform.Size = Vector3.new(15, 1, 15)
     platform.Anchored = true
     platform.CanCollide = true
     platform.Transparency = 0.5
@@ -32,6 +24,22 @@ local function createPlatform()
 end
 
 createPlatform()
+
+-- Ölünce/Yeniden Doğunca (CharacterAdded) platformu sıfırdan kurma ve sabitleme
+player.CharacterAdded:Connect(function(newChar)
+    character = newChar
+    humanoidRootPart = newChar:WaitForChild("HumanoidRootPart")
+    humanoid = newChar:WaitForChild("Humanoid")
+    
+    humanoid.JumpPower = 0
+    humanoid.UseJumpPower = true
+    
+    -- Yeniden doğduğunda platform aktifse hemen altında belirtsin
+    if isPlatformActive then
+        lockedHeight = humanoidRootPart.Position.Y - 3
+        createPlatform()
+    end
+end)
 
 -- GUI Oluşturma
 local screenGui = Instance.new("ScreenGui")
@@ -105,6 +113,7 @@ Instance.new("UICorner", toggleButton).CornerRadius = UDim.new(0, 6)
 -- Kapat Butonu (X)
 local closeButton = Instance.new("TextButton")
 closeButton.Size = UDim2.new(0, 120, 0, 35)
+closeButton.Position = UDim2.0, 10, 0, 190 -- (düzenlendi)
 closeButton.Position = UDim2.new(0, 10, 0, 190)
 closeButton.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -165,7 +174,7 @@ closeButton.MouseButton1Click:Connect(function()
     screenGui:Destroy()
 end)
 
--- Takip ve Sabitleme Döngüsü
+-- Takip, Sabitleme ve Işınlanma (Teleport) Algılama Döngüsü
 game:GetService("RunService").RenderStepped:Connect(function(dt)
     if not isRunning or not isPlatformActive then return end
     
@@ -176,6 +185,23 @@ game:GetService("RunService").RenderStepped:Connect(function(dt)
     end
     
     if humanoidRootPart and platform then
-        platform.CFrame = CFrame.new(humanoidRootPart.Position.X, lockedHeight, humanoidRootPart.Position.Z)
+        -- Eğer haritada başka bir yere ışınlandıysan (mesafe çok açıldıysa)
+        -- platformu direkt senin yeni konumuna anında eşitliyoruz ki geride kalmasın
+        local currentX = humanoidRootPart.Position.X
+        local currentZ = humanoidRootPart.Position.Z
+        local platPos = platform.Position
+        
+        local distanceXZ = Vector2.new(platPos.X - currentX, platPos.Z - currentZ).Magnitude
+        if distanceXZ > 30 then
+            -- Anlık ışınlanma algılandı, yüksekliği de güncel konuma sabitle
+            lockedHeight = humanoidRootPart.Position.Y - 3
+        end
+        
+        -- Eğer platform silindiyse (örn. bug'a girdiyse) yeniden oluştur
+        if not platform.Parent then
+            createPlatform()
+        end
+        
+        platform.CFrame = CFrame.new(currentX, lockedHeight, currentZ)
     end
 end)
