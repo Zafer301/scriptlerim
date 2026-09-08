@@ -20,20 +20,20 @@ local platform = nil
 local isPlatformActive = true
 local lockedHeight = humanoidRootPart.Position.Y - 3
 
--- Platformu oluşturma fonksiyonu
+-- Platformu oluşturma fonksiyonu (CanCollide false yapılır ki hiçbir şeye çarpmasın, içinden geçsin)
 local function createPlatform()
     if platform then platform:Destroy() end
     platform = Instance.new("Part")
     platform.Size = Vector3.new(50, 1, 50)
     platform.Anchored = true
-    platform.CanCollide = true
+    platform.CanCollide = false -- Diğer objelere ve duvarlara çarpmaz, içinden geçer!
     platform.Transparency = 0.5
     platform.Parent = workspace
 end
 
 createPlatform()
 
--- GUI Oluşturma (Aç/Kapat butonu sığması için yüksekliği biraz arttırdık)
+-- GUI Oluşturma
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "PlatformControlGUI"
 screenGui.ResetOnSpawn = false
@@ -165,7 +165,7 @@ closeButton.MouseButton1Click:Connect(function()
     screenGui:Destroy()
 end)
 
--- Takip ve Sabitleme Döngüsü
+-- Takip ve Sabitleme Döngüsü (Karakteri üstünde tutar, duvarlardan etkilenmez)
 game:GetService("RunService").RenderStepped:Connect(function(dt)
     if not isRunning or not isPlatformActive then return end
     
