@@ -24,10 +24,10 @@ platform.CanCollide = true
 platform.Transparency = 0.5
 platform.Parent = workspace
 
--- Başlangıç yüksekliğini sabitle
+-- Başlangıç yüksekliğini sabitle (Karakterin altı)
 local lockedHeight = humanoidRootPart.Position.Y - 3
 
--- GUI Oluşturma (TextBox sığması için yüksekliği biraz arttırdık)
+-- GUI Oluşturma
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "PlatformControlGUI"
 screenGui.ResetOnSpawn = false
@@ -121,17 +121,17 @@ closeButton.MouseButton1Click:Connect(function()
     isRunning = false
     if humanoid then 
         humanoid.JumpPower = 50 
-        humanoid.WalkSpeed = 16 -- Kapatınca hızı normale döndür
+        humanoid.WalkSpeed = 16 
     end
     platform:Destroy()
     screenGui:Destroy()
 end)
 
--- Takip ve Sabitleme Döngüsü
+-- Karakterin platforma yapışmasını ve takip etmesini sağlayan ana döngü
 game:GetService("RunService").RenderStepped:Connect(function(dt)
     if not isRunning then return end
     
-    -- Butona basılı tutulduğunda yüksekliği değiştir
+    -- Butona basılı tutulduğunda yüksekliği dinamik değiştir
     if movingUp then
         lockedHeight = lockedHeight + (25 * dt)
     elseif movingDown then
@@ -139,6 +139,7 @@ game:GetService("RunService").RenderStepped:Connect(function(dt)
     end
     
     if humanoidRootPart and platform then
+        -- X ve Z'de seni takip eder, Y'de seninle birlikte kilitli yükseklikte kalır (Yapışma hissi)
         platform.CFrame = CFrame.new(humanoidRootPart.Position.X, lockedHeight, humanoidRootPart.Position.Z)
     end
 end)
