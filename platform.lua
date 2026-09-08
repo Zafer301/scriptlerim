@@ -25,22 +25,6 @@ end
 
 createPlatform()
 
--- Ölünce/Yeniden Doğunca (CharacterAdded) platformu sıfırdan kurma ve sabitleme
-player.CharacterAdded:Connect(function(newChar)
-    character = newChar
-    humanoidRootPart = newChar:WaitForChild("HumanoidRootPart")
-    humanoid = newChar:WaitForChild("Humanoid")
-    
-    humanoid.JumpPower = 0
-    humanoid.UseJumpPower = true
-    
-    -- Yeniden doğduğunda platform aktifse hemen altında belirtsin
-    if isPlatformActive then
-        lockedHeight = humanoidRootPart.Position.Y - 3
-        createPlatform()
-    end
-end)
-
 -- GUI Oluşturma
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "PlatformControlGUI"
@@ -113,7 +97,6 @@ Instance.new("UICorner", toggleButton).CornerRadius = UDim.new(0, 6)
 -- Kapat Butonu (X)
 local closeButton = Instance.new("TextButton")
 closeButton.Size = UDim2.new(0, 120, 0, 35)
-closeButton.Position = UDim2.0, 10, 0, 190 -- (düzenlendi)
 closeButton.Position = UDim2.new(0, 10, 0, 190)
 closeButton.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -122,6 +105,23 @@ closeButton.Font = Enum.Font.SourceSansBold
 closeButton.Text = "Menüyü Kapat"
 closeButton.Parent = frame
 Instance.new("UICorner", closeButton).CornerRadius = UDim.new(0, 6)
+
+-- Ölünce / Yeniden Doğunca Karakteri Güncelleme
+player.CharacterAdded:Connect(function(newChar)
+    character = newChar
+    humanoidRootPart = newChar:WaitForChild("HumanoidRootPart")
+    humanoid = newChar:WaitForChild("Humanoid")
+    
+    if isPlatformActive then
+        humanoid.JumpPower = 0
+        humanoid.UseJumpPower = true
+        lockedHeight = humanoidRootPart.Position.Y - 3
+        createPlatform()
+    else
+        humanoid.JumpPower = 50
+        humanoid.UseJumpPower = true
+    end
+end)
 
 -- TextBox Hız Değiştirme Mantığı
 speedBox.FocusLost:Connect(function()
@@ -137,6 +137,10 @@ toggleButton.MouseButton1Click:Connect(function()
     if isPlatformActive then
         toggleButton.Text = "Platform: AÇIK"
         toggleButton.BackgroundColor3 = Color3.fromRGB(50, 140, 50)
+        if humanoid then
+            humanoid.JumpPower = 0
+            humanoid.UseJumpPower = true
+        end
         if humanoidRootPart then
             lockedHeight = humanoidRootPart.Position.Y - 3
         end
@@ -144,6 +148,10 @@ toggleButton.MouseButton1Click:Connect(function()
     else
         toggleButton.Text = "Platform: KAPALI"
         toggleButton.BackgroundColor3 = Color3.fromRGB(140, 50, 50)
+        if humanoid then
+            humanoid.JumpPower = 50
+            humanoid.UseJumpPower = true
+        end
         if platform then
             platform:Destroy()
             platform = nil
@@ -174,34 +182,59 @@ closeButton.MouseButton1Click:Connect(function()
     screenGui:Destroy()
 end)
 
--- Takip, Sabitleme ve Işınlanma (Teleport) Algılama Döngüsü
+-- Takip, Saç Teması ve Zemin Sınırları Döngüsü
 game:GetService("RunService").RenderStepped:Connect(function(dt)
     if not isRunning or not isPlatformActive then return end
     
-    if movingUp then
-        lockedHeight = lockedHeight + (25 * dt)
-    elseif movingDown then
-        lockedHeight = lockedHeight - (25 * dt)
-    end
-    
     if humanoidRootPart and platform then
-        -- Eğer haritada başka bir yere ışınlandıysan (mesafe çok açıldıysa)
-        -- platformu direkt senin yeni konumuna anında eşitliyoruz ki geride kalmasın
         local currentX = humanoidRootPart.Position.X
         local currentZ = humanoidRootPart.Position.Z
+        local charY = humanoidRootPart.Position.Y
         local platPos = platform.Position
         
+        -- Işınlanma algılama
         local distanceXZ = Vector2.new(platPos.X - currentX, platPos.Z - currentZ).Magnitude
         if distanceXZ > 30 then
-            -- Anlık ışınlanma algılandı, yüksekliği de güncel konuma sabitle
-            lockedHeight = humanoidRootPart.Position.Y - 3
+            lockedHeight = charY - 3
         end
         
-        -- Eğer platform silindiyse (örn. bug'a girdiyse) yeniden oluştur
-        if not platform.Parent then
-            createPlatform()
-        end
+        -- Ortak Raycast Parametreleri (Karakteri ve platformu yoksay)
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+        raycastParams.FilterDescendantsInstances = {character, platform}
         
-        platform.CFrame = CFrame.new(currentX, lockedHeight, currentZ)
+        -- Yukarı hareket mantığı (+) -> Saç/Kafa temasında direkt kilitlen
+        if movingUp then
+            -- Kafanın tam üstünden yukarı doğru çok kısa bir ray at (saçın/kafanın değdiğini anlasın diye)
+            local headPos = humanoidRootPart.Position + Vector3.new(0, 3, 0)
+            local roofRay = workspace:Raycast(headPos, Vector3.new(0, 1.5, 0), raycastParams)
+            
+            if roofRay then
+                -- Saç veya kafa tavana değdi! Hiç kalkmasın, kilitli kalsın.
+            else
+                -- Üstte boşluk var, yükselebilir
+                lockedHeight = lockedHeight + (25 * dt)
+            end
+            
+        -- Aşağı hareket mantığı (-)
+        elseif movingDown then
+            local groundRay = workspace:Raycast(humanoidRootPart.Position, Vector3.new(0, -50, 0), raycastParams)
+            
+            if groundRay then
+                local groundLimit = charY - 6
+                if lockedHeight > groundLimit then
+                    lockedHeight = lockedHeight - (25 * dt)
+                    if lockedHeight < groundLimit then
+                        lockedHeight = groundLimit
+                    end
+                end
+            else
+                lockedHeight = lockedHeight - (25 * dt)
+            end
+        end
+    end
+    
+    if platform then
+        platform.CFrame = CFrame.new(humanoidRootPart.Position.X, lockedHeight, humanoidRootPart.Position.Z)
     end
 end)
