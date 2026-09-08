@@ -3,11 +3,10 @@ local character = player.Character or player.CharacterAdded:Wait()
 local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
 local humanoid = character:WaitForChild("Humanoid")
 
--- Karakterin zıplamasını engelle (Sıkışmayı önlemek için)
+-- Karakterin zıplamasını engelle
 humanoid.JumpPower = 0
 humanoid.UseJumpPower = true
 
--- Karakter sıfırlandığında zıplamayı kapalı tutmaya devam et
 player.CharacterAdded:Connect(function(newChar)
     character = newChar
     humanoidRootPart = newChar:WaitForChild("HumanoidRootPart")
@@ -16,25 +15,32 @@ player.CharacterAdded:Connect(function(newChar)
     humanoid.UseJumpPower = true
 end)
 
--- Platformu oluştur
-local platform = Instance.new("Part")
-platform.Size = Vector3.new(50, 1, 50)
-platform.Anchored = true
-platform.CanCollide = true
-platform.Transparency = 0.5
-platform.Parent = workspace
-
--- Başlangıç yüksekliğini sabitle (Karakterin altı)
+-- Değişkenler
+local platform = nil
+local isPlatformActive = true
 local lockedHeight = humanoidRootPart.Position.Y - 3
 
--- GUI Oluşturma
+-- Platformu oluşturma fonksiyonu
+local function createPlatform()
+    if platform then platform:Destroy() end
+    platform = Instance.new("Part")
+    platform.Size = Vector3.new(50, 1, 50)
+    platform.Anchored = true
+    platform.CanCollide = true
+    platform.Transparency = 0.5
+    platform.Parent = workspace
+end
+
+createPlatform()
+
+-- GUI Oluşturma (Aç/Kapat butonu sığması için yüksekliği biraz arttırdık)
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "PlatformControlGUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 140, 0, 230)
+frame.Size = UDim2.new(0, 140, 0, 275)
 frame.Position = UDim2.new(0, 20, 0, 150)
 frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 frame.BorderSizePixel = 0
@@ -84,23 +90,55 @@ speedBox.ClearTextOnFocus = false
 speedBox.Parent = frame
 Instance.new("UICorner", speedBox).CornerRadius = UDim.new(0, 6)
 
+-- Platform Aç/Kapat Butonu
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(0, 120, 0, 35)
+toggleButton.Position = UDim2.new(0, 10, 0, 145)
+toggleButton.BackgroundColor3 = Color3.fromRGB(50, 140, 50)
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.TextSize = 15
+toggleButton.Font = Enum.Font.SourceSansBold
+toggleButton.Text = "Platform: AÇIK"
+toggleButton.Parent = frame
+Instance.new("UICorner", toggleButton).CornerRadius = UDim.new(0, 6)
+
 -- Kapat Butonu (X)
 local closeButton = Instance.new("TextButton")
 closeButton.Size = UDim2.new(0, 120, 0, 35)
-closeButton.Position = UDim2.new(0, 10, 0, 145)
+closeButton.Position = UDim2.new(0, 10, 0, 190)
 closeButton.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 closeButton.TextSize = 16
 closeButton.Font = Enum.Font.SourceSansBold
-closeButton.Text = "Kapat"
+closeButton.Text = "Menüyü Kapat"
 closeButton.Parent = frame
 Instance.new("UICorner", closeButton).CornerRadius = UDim.new(0, 6)
 
 -- TextBox Hız Değiştirme Mantığı
-speedBox.FocusLost:Connect(function(enterPressed)
+speedBox.FocusLost:Connect(function()
     local newSpeed = tonumber(speedBox.Text)
     if newSpeed and humanoid then
         humanoid.WalkSpeed = newSpeed
+    end
+end)
+
+-- Platformu Aç/Kapat Butonu Mantığı
+toggleButton.MouseButton1Click:Connect(function()
+    isPlatformActive = not isPlatformActive
+    if isPlatformActive then
+        toggleButton.Text = "Platform: AÇIK"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(50, 140, 50)
+        if humanoidRootPart then
+            lockedHeight = humanoidRootPart.Position.Y - 3
+        end
+        createPlatform()
+    else
+        toggleButton.Text = "Platform: KAPALI"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(140, 50, 50)
+        if platform then
+            platform:Destroy()
+            platform = nil
+        end
     end
 end)
 
@@ -108,11 +146,11 @@ end)
 local movingUp = false
 local movingDown = false
 
-upButton.MouseButton1Down:Connect(function() movingUp = true end)
+upButton.MouseButton1Down:Connect(function() if isPlatformActive then movingUp = true end end)
 upButton.MouseButton1Up:Connect(function() movingUp = false end)
 upButton.MouseLeave:Connect(function() movingUp = false end)
 
-downButton.MouseButton1Down:Connect(function() movingDown = true end)
+downButton.MouseButton1Down:Connect(function() if isPlatformActive then movingDown = true end end)
 downButton.MouseButton1Up:Connect(function() movingDown = false end)
 downButton.MouseLeave:Connect(function() movingDown = false end)
 
@@ -123,15 +161,14 @@ closeButton.MouseButton1Click:Connect(function()
         humanoid.JumpPower = 50 
         humanoid.WalkSpeed = 16 
     end
-    platform:Destroy()
+    if platform then platform:Destroy() end
     screenGui:Destroy()
 end)
 
--- Karakterin platforma yapışmasını ve takip etmesini sağlayan ana döngü
+-- Takip ve Sabitleme Döngüsü
 game:GetService("RunService").RenderStepped:Connect(function(dt)
-    if not isRunning then return end
+    if not isRunning or not isPlatformActive then return end
     
-    -- Butona basılı tutulduğunda yüksekliği dinamik değiştir
     if movingUp then
         lockedHeight = lockedHeight + (25 * dt)
     elseif movingDown then
@@ -139,7 +176,6 @@ game:GetService("RunService").RenderStepped:Connect(function(dt)
     end
     
     if humanoidRootPart and platform then
-        -- X ve Z'de seni takip eder, Y'de seninle birlikte kilitli yükseklikte kalır (Yapışma hissi)
         platform.CFrame = CFrame.new(humanoidRootPart.Position.X, lockedHeight, humanoidRootPart.Position.Z)
     end
 end)
