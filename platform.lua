@@ -9,9 +9,11 @@ platform.CanCollide = true
 platform.Transparency = 0.5
 platform.Parent = workspace
 
+local baseHeight = humanoidRootPart.Position.Y - 3
+
 game:GetService("RunService").RenderStepped:Connect(function()
     if humanoidRootPart and platform then
-        local targetPosition = humanoidRootPart.Position - Vector3.new(0, 3, 0)
-        platform.CFrame = CFrame.new(targetPosition)
+        -- X ve Z'de karakteri takip eder, Y'yi (yüksekliği) sabiter
+        platform.CFrame = CFrame.new(humanoidRootPart.Position.X, baseHeight, humanoidRootPart.Position.Z)
     end
 end)
