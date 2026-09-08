@@ -67,13 +67,28 @@ closeButton.Text = "Kapat"
 closeButton.Parent = frame
 Instance.new("UICorner", closeButton).CornerRadius = UDim.new(0, 6)
 
--- Buton İşlevleri
-upButton.MouseButton1Click:Connect(function()
-    heightOffset = heightOffset + 1
+-- Basılı tutma durumları
+local movingUp = false
+local movingDown = false
+
+upButton.MouseButton1Down:Connect(function()
+    movingUp = true
+end)
+upButton.MouseButton1Up:Connect(function()
+    movingUp = false
+end)
+upButton.MouseLeave:Connect(function()
+    movingUp = false
 end)
 
-downButton.MouseButton1Click:Connect(function()
-    heightOffset = heightOffset - 1
+downButton.MouseButton1Down:Connect(function()
+    movingDown = true
+end)
+downButton.MouseButton1Up:Connect(function()
+    movingDown = false
+end)
+downButton.MouseLeave:Connect(function()
+    movingDown = false
 end)
 
 local isRunning = true
@@ -83,9 +98,15 @@ closeButton.MouseButton1Click:Connect(function()
     screenGui:Destroy()
 end)
 
--- Takip Döngüsü
-game:GetService("RunService").RenderStepped:Connect(function()
+-- Takip ve Hareket Döngüsü
+game:GetService("RunService").RenderStepped:Connect(function(dt)
     if not isRunning then return end
+    
+    if movingUp then
+        heightOffset = heightOffset + (15 * dt)
+    elseif movingDown then
+        heightOffset = heightOffset - (15 * dt)
+    end
     
     if humanoidRootPart and platform then
         local targetPosition = humanoidRootPart.Position + Vector3.new(0, heightOffset, 0)
