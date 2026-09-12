@@ -4,8 +4,87 @@ local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 local UserInputService = game:GetService("UserInputService")
 local StarterGui = game:GetService("StarterGui")
+local TweenService = game:GetService("TweenService")
+local Camera = workspace.CurrentCamera
 
 local player = Players.LocalPlayer
+
+-- 🔔 EKRANDA 5 SANİYE BOYUNCA BÜYÜK BOYUTTA BELİRGİN BİLDİRİM FONKSİYONU
+local function showCustomNotification(titleText, descText)
+    task.spawn(function()
+        local pg = player:FindFirstChild("PlayerGui")
+        if not pg then return end
+        
+        local oldNotif = pg:FindFirstChild("TemporaryScriptNotification")
+        if oldNotif then oldNotif:Destroy() end
+        
+        local notifGui = Instance.new("ScreenGui")
+        notifGui.Name = "TemporaryScriptNotification"
+        notifGui.ResetOnSpawn = false
+        notifGui.Parent = pg
+        
+        local notifFrame = Instance.new("Frame")
+        notifFrame.Size = UDim2.new(0, 380, 0, 95)
+        notifFrame.Position = UDim2.new(0.5, -190, 0, -120)
+        notifFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+        notifFrame.BorderSizePixel = 0
+        notifFrame.Parent = notifGui
+        
+        Instance.new("UICorner", notifFrame).CornerRadius = UDim.new(0, 12)
+        
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = Color3.fromRGB(80, 70, 220)
+        stroke.Thickness = 2.5
+        stroke.Parent = notifFrame
+        
+        local title = Instance.new("TextLabel")
+        title.Size = UDim2.new(1, -20, 0, 30)
+        title.Position = UDim2.new(0, 10, 0, 12)
+        title.BackgroundTransparency = 1
+        title.TextColor3 = Color3.fromRGB(120, 200, 255)
+        title.TextSize = 17
+        title.Font = Enum.Font.GothamBold
+        title.TextXAlignment = Enum.TextXAlignment.Left
+        title.Text = titleText
+        title.Parent = notifFrame
+        
+        local desc = Instance.new("TextLabel")
+        desc.Size = UDim2.new(1, -20, 0, 40)
+        desc.Position = UDim2.new(0, 10, 0, 42)
+        desc.BackgroundTransparency = 1
+        desc.TextColor3 = Color3.fromRGB(240, 240, 255)
+        desc.TextSize = 14
+        desc.Font = Enum.Font.GothamMedium
+        desc.TextXAlignment = Enum.TextXAlignment.Left
+        desc.TextYAlignment = Enum.TextYAlignment.Top
+        desc.TextWrapped = true
+        desc.Text = descText
+        desc.Parent = notifFrame
+        
+        local info = TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        local slideIn = TweenService:Create(notifFrame, info, {Position = UDim2.new(0.5, -190, 0, 25)})
+        slideIn:Play()
+        
+        task.wait(5)
+        
+        local slideOut = TweenService:Create(notifFrame, info, {Position = UDim2.new(0.5, -190, 0, -120)})
+        slideOut:Play()
+        slideOut.Completed:Wait()
+        
+        notifGui:Destroy()
+    end)
+end
+
+-- 🔒 ÜST ÜSTE GUI AÇILMAMA KİLİDİ (GLOBAL KONTROL)
+if player:FindFirstChild("PlayerGui") then
+    local existingGui = player.PlayerGui:FindFirstChild("ModernCategorizedMenu")
+    if existingGui then
+        warn("⚠️ Menü zaten açık! Üst üste açılması engellendi ipucu - basıca göz tuşu çıkar. O göz tuşuna 2 kez tıklarsan geri açılır.")
+        showCustomNotification("⚠️ Uyarı / Warning", "Menü zaten açık! Üst üste açılması engellendi. ipucu - basıca göz tuşu çıkar. O göz tuşuna 2 kez tıklarsan geri açılır.")
+        return
+    end
+end
+
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
 local humanoid = character:WaitForChild("Humanoid")
@@ -14,7 +93,7 @@ humanoid.JumpPower = 50
 humanoid.UseJumpPower = true
 
 local platform = nil
-local isPlatformActive = true
+local isPlatformActive = false
 local lockedHeight = humanoidRootPart.Position.Y - 3
 
 local noclipActive = false
@@ -36,14 +115,29 @@ local isHoldingJump = false
 local walkFlingActive = false
 local walkFlingConnection = nil
 
-local currentTargetIndex = 1
-local targetFlingTimer = 0
-local spinAngle = 0
+local powerfulTrampolineActive = false
+local trampolinePart = nil
+local trampolineConnection = nil
+
+local isSitTrollActive = false
+
+local focusedTargetPlayer = nil
+local targetFocusActive = false
+
+local espEnabled = false
+local espBoxEnabled = true
+local espNameEnabled = true
+local espDistanceEnabled = true
+local espTracersEnabled = false
+local espObjects = {}
+
+local xrayEnabled = false
+local xrayTransparency = 0.5
+local originalPartsData = {}
 
 local originalVolumes = {}
 local isMuted = false
 
--- OYUNCU ÖLÜMÜ BİLDİRİM SİSTEMİ (AÇ/KAPA ÖZELLİKLİ)
 local deathNotificationEnabled = true
 local deathConnections = {}
 
@@ -86,45 +180,91 @@ Players.PlayerRemoving:Connect(function(p)
         deathConnections[p]:Disconnect()
         deathConnections[p] = nil
     end
+    if focusedTargetPlayer == p then
+        focusedTargetPlayer = nil
+        targetFocusActive = false
+    end
 end)
 
 local currentLang = "TR"
 local translations = {
     ["TR"] = {
-        title = "⚡ DÖNEN TARGET FLING ⚡",
-        homeTab = "Ev 🏠", soundTab = "Ses 🎵", platformTab = "Platform 🧱", cheatsTab = "Hileler ⚡", trollTab = "Troll 🌀", langTab = "Dil 🌍", guideTab = "Kılavuz 📖",
-        closeBtn = "Menüyü Kapat ❌",
-        homeWelcome = "⚡ Menüye Hoş Geldin!\n\nÖlüm bildirimlerini aşağıdaki butondan açıp kapatabilirsin.",
-        musicIdPh = "Müzik ID Gir", playMusic = "Müziği Oynat 🎵", stopMusic = "Müziği Kapat ⏹️", muteGame = "Oyun Sesini Sustur 🔇", unmuteGame = "Oyun Sesini Aç 🔊",
-        upBtn = "+ (Yukarı) 🔼", downBtn = "- (Aşağı) 🔽", platOn = "Platform: AÇIK", platOff = "Platform: KAPALI",
-        speedPh = "Hız Yaz (örn: 50)", noclipOn = "Noclip: AÇIK 👻", noclipOff = "Noclip: KAPALI", flyOn = "Uçma: AÇIK ✈️", flyOff = "Uçma: KAPALI ✈️", holdJumpOn = "Zıplama Tuşuyla Yüksel: AÇIK 🚀", holdJumpOff = "Zıplama Tuşuyla Yüksel: KAPALI 🚀",
-        trollTitle = "🌀 TROLL ÖZELLİKLERİ", walkFlingOn = "Target Fling (Dönen): AÇIK 🎯", walkFlingOff = "Target Fling (Dönen): KAPALI 🎯",
-        deathNotifOn = "Ölüm Bildirimi: AÇIK 🔔", deathNotifOff = "Ölüm Bildirimi: KAPALI 🔕",
-        flyTitle = "✈️ UÇMA YÜKSEKLİK", upMob = "Yüksel 🔼", downMob = "Alçal 🔽",
+        title = "⚡ MODERN TARGET FLING ⚡",
+        homeTab = "Ev", visualsTab = "Visuals", soundTab = "Ses", platformTab = "Platform", cheatsTab = "Hileler", trollTab = "Troll", boredomTab = "Can Sıkıntısı", langTab = "Dil", guideTab = "Kılavuz",
+        closeBtn = "Menüyü Kapat",
+        homeWelcome = "⚡ Modern Arayüze Hoş Geldin!\n\nEv sekmesi altından ölüm bildirimlerini yönetebilirsin. Üstteki Visuals düğmesinden ESP ve X-Ray ayarlarını açabilirsin.",
+        deathSectionTitle = "🎯 ÖLÜM AYARLARI",
+        visualsSectionTitle = "👁️ BÖLÜM 1: ESP AYARLARI",
+        xraySectionTitle = "🧱 BÖLÜM 2: X-RAY (DUVAR GÖRÜŞÜ) AYARLARI",
+        musicIdPh = "Müzik ID Gir", playMusic = "Müziği Oynat", stopMusic = "Müziği Kapat", muteGame = "Oyun Sesini Sustur", unmuteGame = "Oyun Sesini Aç",
+        upBtn = "+ (Yukarı)", downBtn = "- (Aşağı)", platOn = "Platform: AÇIK", platOff = "Platform: KAPALI",
+        speedPh = "Hız Yaz (örn: 50)", noclipOn = "Noclip: AÇIK", noclipOff = "Noclip: KAPALI", flyOn = "Uçma: AÇIK", flyOff = "Uçma: KAPALI", holdJumpOn = "Zıplama Tuşuyla Yüksel: AÇIK", holdJumpOff = "Zıplama Tuşuyla Yüksel: KAPALI",
+        trollTitle = "🌀 TROLL ÖZELLİKLERİ", walkFlingOn = "Target Fling (Dönen): AÇIK", walkFlingOff = "Target Fling (Dönen): KAPALI",
+        sitTrollOn = "Yere Oturtma Troll: AÇIK", sitTrollOff = "Yere Oturtma Troll: KAPALI",
+        deathNotifOn = "Ölüm Bildirimi: AÇIK", deathNotifOff = "Ölüm Bildirimi: KAPALI",
+        boredomTitle = "🎲 CAN SIKINTISI BÖLÜMÜ", trampolineOn = "Güçlü Trambolin: AÇIK", trampolineOff = "Güçlü Trambolin: KAPALI",
+        flyTitle = "✈️ UÇMA YÜKSEKLİK", upMob = "Yüksel", downMob = "Alçal",
         langTrBtn = "🇹🇷 Türkçe", langEnBtn = "🇬🇧 English",
+        espMainOn = "ESP Sistemi: AÇIK", espMainOff = "ESP Sistemi: KAPALI",
+        espBoxOn = "ESP Kutu: AÇIK", espBoxOff = "ESP Kutu: KAPALI",
+        espNameOn = "ESP İsim: AÇIK", espNameOff = "ESP İsim: KAPALI",
+        espDistOn = "ESP Mesafe: AÇIK", espDistOff = "ESP Mesafe: KAPALI",
+        espTracerOn = "ESP Çizgi (Tracer): AÇIK", espTracerOff = "ESP Çizgi (Tracer): KAPALI",
+        xrayMainOn = "X-Ray Duvar Görüşü: AÇIK", xrayMainOff = "X-Ray Duvar Görüşü: KAPALI",
+        xraySliderPh = "Şeffaflık Gir (örn: 0.5)",
+        targetFocusSectionTitle = "🎯 HEDEF ODAKLANMA (TARGET FOCUS)",
+        targetDropdownPh = "Hedef Oyuncu Seç...",
+        targetFocusBtnOn = "Hedefe Odaklanma: AÇIK",
+        targetFocusBtnOff = "Hedefe Odaklanma: KAPALI",
         guideText = [[📜 KILAVUZ & BİLGİLER:
 
 🎯 Target Fling (Dönen Mod):
-Karakterini yüksek hızda döndürerek hedeflerin içine girer ve fizik motorunu tetikleyip onları uzaya uçurur!
-*(Ölüm bildirimlerini Ev sekmesinden açıp kapatabilirsin!)]]
+Karakterini hedefledikten sonra yüksek hızda döndürerek fizik motorunu tetikler ve uzaya uçurur!
+🎯 Hedefe Odaklanma (Target Focus):
+Troll sekmesinden seçtiğin spesifik bir oyuncunun tam üstüne kilitlenerek onu taklit eder/rahatsız edersin!
+🎲 Güçlü Trambolin:
+Önünde beliren tramboline değerek gökyüzüne uçabilirsin!
+👁️ Visuals / ESP & X-Ray Sistemi:
+Visuals sekmesinden ESP özelliklerini ve 2. Bölümden X-Ray duvar şeffaflığını aktif edebilirsin.]]
     },
     ["EN"] = {
-        title = "⚡ SPINNING TARGET FLING ⚡",
-        homeTab = "Home 🏠", soundTab = "Sound 🎵", platformTab = "Platform 🧱", cheatsTab = "Cheats ⚡", trollTab = "Troll 🌀", langTab = "Lang 🌍", guideTab = "Guide 📖",
-        closeBtn = "Close Menu ❌",
-        homeWelcome = "⚡ Welcome to the Menu!\n\nYou can toggle death notifications using the button below.",
-        musicIdPh = "Enter Music ID", playMusic = "Play Music 🎵", stopMusic = "Stop Music ⏹️", muteGame = "Mute Game Audio 🔇", unmuteGame = "Unmute Game Audio 🔊",
-        upBtn = "+ (Up) 🔼", downBtn = "- (Down) 🔽", platOn = "Platform: ON", platOff = "Platform: OFF",
-        speedPh = "Enter Speed (e.g: 50)", noclipOn = "Noclip: ON 👻", noclipOff = "Noclip: OFF", flyOn = "Fly: ON ✈️", flyOff = "Fly: OFF ✈️", holdJumpOn = "Hold Jump: ON 🚀", holdJumpOff = "Hold Jump: OFF 🚀",
-        trollTitle = "🌀 TROLL FEATURES", walkFlingOn = "Target Fling (Spinning): ON 🎯", walkFlingOff = "Target Fling (Spinning): OFF 🎯",
-        deathNotifOn = "Death Notification: ON 🔔", deathNotifOff = "Death Notification: OFF 🔕",
-        flyTitle = "✈️ FLY HEIGHT", upMob = "Up 🔼", downMob = "Down 🔽",
+        title = "⚡ MODERN TARGET FLING ⚡",
+        homeTab = "Home", visualsTab = "Visuals", soundTab = "Sound", platformTab = "Platform", cheatsTab = "Cheats", trollTab = "Troll", boredomTab = "Boredom", langTab = "Lang", guideTab = "Guide",
+        closeBtn = "Close Menu",
+        homeWelcome = "⚡ Welcome to the Modern UI!\n\nYou can manage death notifications from the Home tab, and ESP/X-Ray settings from the Visuals button above.",
+        deathSectionTitle = "🎯 DEATH SETTINGS",
+        visualsSectionTitle = "👁️ SECTION 1: ESP SETTINGS",
+        xraySectionTitle = "🧱 SECTION 2: X-RAY (WALL VIEW) SETTINGS",
+        musicIdPh = "Enter Music ID", playMusic = "Play Music", stopMusic = "Stop Music", muteGame = "Mute Game Audio", unmuteGame = "Unmute Game Audio",
+        upBtn = "+ (Up)", downBtn = "- (Down)", platOn = "Platform: ON", platOff = "Platform: OFF",
+        speedPh = "Enter Speed (e.g: 50)", noclipOn = "Noclip: ON", noclipOff = "Noclip: OFF", flyOn = "Fly: ON", flyOff = "Fly: OFF", holdJumpOn = "Hold Jump: ON", holdJumpOff = "Hold Jump: OFF",
+        trollTitle = "🌀 TROLL FEATURES", walkFlingOn = "Target Fling (Spinning): ON", walkFlingOff = "Target Fling (Spinning): OFF",
+        sitTrollOn = "Sit Troll: ON", sitTrollOff = "Sit Troll: OFF",
+        deathNotifOn = "Death Notification: ON", deathNotifOff = "Death Notification: OFF",
+        boredomTitle = "🎲 BOREDOM SECTION", trampolineOn = "Powerful Trampoline: ON", trampolineOff = "Powerful Trampoline: OFF",
+        flyTitle = "✈️ FLY HEIGHT", upMob = "Up", downMob = "Down",
         langTrBtn = "🇹🇷 Turkish", langEnBtn = "🇬🇧 English",
+        espMainOn = "ESP System: ON", espMainOff = "ESP System: OFF",
+        espBoxOn = "ESP Box: ON", espBoxOff = "ESP Box: OFF",
+        espNameOn = "ESP Name: ON", espNameOff = "ESP Name: OFF",
+        espDistOn = "ESP Distance: ON", espDistOff = "ESP Distance: OFF",
+        espTracerOn = "ESP Tracer: ON", espTracerOff = "ESP Tracer: OFF",
+        xrayMainOn = "X-Ray Wall View: ON", xrayMainOff = "X-Ray Wall View: OFF",
+        xraySliderPh = "Enter Transparency (e.g: 0.5)",
+        targetFocusSectionTitle = "🎯 TARGET FOCUS",
+        targetDropdownPh = "Select Target Player...",
+        targetFocusBtnOn = "Target Focus: ON",
+        targetFocusBtnOff = "Target Focus: OFF",
         guideText = [[📜 GUIDE & INFO:
 
 🎯 Target Fling (Spinning Mode):
 Spins your character at high speed into targets, triggering the physics engine to fling them away!
-*(You can toggle death notifications from the Home tab!)]]
+🎯 Target Focus:
+Locks onto and follows a specific player chosen from the Troll tab to annoy or trail them!
+🎲 Powerful Trampoline:
+Step on the trampoline spawned in front of you to fly into the sky!
+👁️ Visuals / ESP & X-Ray System:
+You can toggle ESP features and X-Ray wall transparency from Section 2 of the Visuals tab.]]
     }
 }
 
@@ -145,98 +285,199 @@ end
 
 if humanoidRootPart then
     lockedHeight = humanoidRootPart.Position.Y - 3
-    createPlatform()
 end
 
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "CategorizedMenuGUI"
+screenGui.Name = "ModernCategorizedMenu"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 225, 0, 370)
-frame.Position = UDim2.new(0, 20, 0, 150)
-frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+frame.Size = UDim2.new(0, 480, 0, 320)
+frame.Position = UDim2.new(0.5, -240, 0.5, -160)
+frame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 frame.BorderSizePixel = 0
 frame.Active = true
 frame.Draggable = true
 frame.Parent = screenGui
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
+
+local dropShadow = Instance.new("UIStroke")
+dropShadow.Color = Color3.fromRGB(80, 70, 220)
+dropShadow.Transparency = 0.5
+dropShadow.Thickness = 2
+dropShadow.Parent = frame
+
+local topBar = Instance.new("Frame")
+topBar.Size = UDim2.new(1, 0, 0, 45)
+topBar.BackgroundTransparency = 1
+topBar.Parent = frame
 
 local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, -40, 0, 30)
-titleLabel.Position = UDim2.new(0, 10, 0, 5)
+titleLabel.Size = UDim2.new(1, -210, 1, 0)
+titleLabel.Position = UDim2.new(0, 15, 0, 0)
 titleLabel.BackgroundTransparency = 1
-titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextSize = 9.5
-titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.TextColor3 = Color3.fromRGB(240, 240, 255)
+titleLabel.TextSize = 13
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 titleLabel.Text = translations["TR"].title
-titleLabel.Parent = frame
+titleLabel.Parent = topBar
+
+local topVisualsButton = Instance.new("TextButton")
+topVisualsButton.Size = UDim2.new(0, 75, 0, 30)
+topVisualsButton.Position = UDim2.new(1, -195, 0, 8)
+topVisualsButton.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+topVisualsButton.TextColor3 = Color3.fromRGB(120, 200, 255)
+topVisualsButton.TextSize = 12
+topVisualsButton.Font = Enum.Font.GothamBold
+topVisualsButton.Text = "Visuals"
+topVisualsButton.ZIndex = 3
+topVisualsButton.Visible = true
+topVisualsButton.Parent = topBar
+Instance.new("UICorner", topVisualsButton).CornerRadius = UDim.new(0, 8)
 
 local minimizeButton = Instance.new("TextButton")
-minimizeButton.Size = UDim2.new(0, 25, 0, 25)
-minimizeButton.Position = UDim2.new(1, -30, 0, 5)
-minimizeButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-minimizeButton.TextSize = 16
-minimizeButton.Font = Enum.Font.SourceSansBold
+minimizeButton.Size = UDim2.new(0, 32, 0, 32)
+minimizeButton.Position = UDim2.new(1, -112, 0, 7)
+minimizeButton.BackgroundColor3 = Color3.fromRGB(30, 30, 42)
+minimizeButton.TextColor3 = Color3.fromRGB(200, 200, 220)
+minimizeButton.TextSize = 14
+minimizeButton.Font = Enum.Font.GothamBold
 minimizeButton.Text = "-"
-minimizeButton.Parent = frame
-Instance.new("UICorner", minimizeButton).CornerRadius = UDim.new(0, 4)
+minimizeButton.ZIndex = 3
+minimizeButton.Parent = topBar
+Instance.new("UICorner", minimizeButton).CornerRadius = UDim.new(0, 8)
+
+local closeTopButton = Instance.new("TextButton")
+closeTopButton.Size = UDim2.new(0, 32, 0, 32)
+closeTopButton.Position = UDim2.new(1, -75, 0, 7)
+closeTopButton.BackgroundColor3 = Color3.fromRGB(220, 50, 70)
+closeTopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeTopButton.TextSize = 12
+closeTopButton.Font = Enum.Font.GothamBold
+closeTopButton.Text = "✕"
+closeTopButton.ZIndex = 3
+closeTopButton.Parent = topBar
+Instance.new("UICorner", closeTopButton).CornerRadius = UDim.new(0, 8)
+
+local eyeControlGui = Instance.new("ScreenGui")
+eyeControlGui.Name = "ModernEyeControl"
+eyeControlGui.ResetOnSpawn = false
+eyeControlGui.Enabled = false
+eyeControlGui.Parent = player:WaitForChild("PlayerGui")
 
 local eyeButton = Instance.new("TextButton")
 eyeButton.Size = UDim2.new(0, 50, 0, 50)
-eyeButton.Position = UDim2.new(0.5, -25, 0.5, -25)
-eyeButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+eyeButton.Position = UDim2.new(0.05, 0, 0.4, 0)
+eyeButton.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
 eyeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 eyeButton.TextSize = 24
-eyeButton.Font = Enum.Font.SourceSansBold
-eyeButton.Text = "👁️"
-eyeButton.Visible = false
-eyeButton.Parent = frame
-Instance.new("UICorner", eyeButton).CornerRadius = UDim.new(0, 25)
+eyeButton.Font = Enum.Font.GothamBold
+eyeButton.Text = "👁"
+eyeButton.Active = true
+eyeButton.Draggable = true
+eyeButton.ZIndex = 9999
+eyeButton.Parent = eyeControlGui
+Instance.new("UICorner", eyeButton).CornerRadius = UDim.new(1, 0)
+
+local eyeStroke = Instance.new("UIStroke")
+eyeStroke.Color = Color3.fromRGB(80, 70, 220)
+eyeStroke.Thickness = 2
+eyeStroke.Parent = eyeButton
+
+local resizeButton = Instance.new("TextButton")
+resizeButton.Size = UDim2.new(0, 26, 0, 26)
+resizeButton.Position = UDim2.new(1, -30, 1, -30)
+resizeButton.BackgroundColor3 = Color3.fromRGB(30, 30, 42)
+resizeButton.TextColor3 = Color3.fromRGB(200, 200, 220)
+resizeButton.TextSize = 11
+resizeButton.Font = Enum.Font.GothamBold
+resizeButton.Text = "↔️"
+resizeButton.ZIndex = 5
+resizeButton.Parent = frame
+Instance.new("UICorner", resizeButton).CornerRadius = UDim.new(0, 6)
+
+local resizeStroke = Instance.new("UIStroke")
+resizeStroke.Color = Color3.fromRGB(80, 70, 220)
+resizeStroke.Transparency = 0.4
+resizeStroke.Thickness = 1
+resizeStroke.Parent = resizeButton
+
+local isResizing = false
+local resizeStartPos = Vector2.new(0, 0)
+local startFrameSize = UDim2.new(0, 480, 0, 320)
+
+resizeButton.MouseButton1Down:Connect(function()
+    if isMinimized then return end
+    isResizing = true
+    resizeStartPos = UserInputService:GetMouseLocation()
+    startFrameSize = frame.AbsoluteSize
+    resizeStroke.Color = Color3.fromRGB(120, 110, 255)
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        isResizing = false
+        resizeStroke.Color = Color3.fromRGB(80, 70, 220)
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if isResizing and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local currentMousePos = UserInputService:GetMouseLocation()
+        local delta = currentMousePos - resizeStartPos
+        local newWidth = math.clamp(startFrameSize.X + delta.X, 360, 850)
+        local newHeight = math.clamp(startFrameSize.Y + delta.Y, 240, 650)
+        frame.Size = UDim2.new(0, newWidth, 0, newHeight)
+    end
+end)
 
 local flyControlGui = Instance.new("ScreenGui")
-flyControlGui.Name = "FlyControlGUI"
+flyControlGui.Name = "ModernFlyControl"
 flyControlGui.ResetOnSpawn = false
 flyControlGui.Enabled = false
 flyControlGui.Parent = player:WaitForChild("PlayerGui")
 
 local flyFrame = Instance.new("Frame")
-flyFrame.Size = UDim2.new(0, 130, 0, 68)
-flyFrame.Position = UDim2.new(1, -150, 0.5, -34)
-flyFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+flyFrame.Size = UDim2.new(0, 140, 0, 75)
+flyFrame.Position = UDim2.new(1, -160, 0.5, -37)
+flyFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 flyFrame.BorderSizePixel = 0
 flyFrame.Active = true
 flyFrame.Draggable = true
 flyFrame.Parent = flyControlGui
-Instance.new("UICorner", flyFrame).CornerRadius = UDim.new(0, 8)
+Instance.new("UICorner", flyFrame).CornerRadius = UDim.new(0, 10)
+local flyStroke = Instance.new("UIStroke")
+flyStroke.Color = Color3.fromRGB(80, 70, 220)
+flyStroke.Thickness = 1.5
+flyStroke.Parent = flyFrame
 
 local flyTitle = Instance.new("TextLabel")
-flyTitle.Size = UDim2.new(1, 0, 0, 22)
+flyTitle.Size = UDim2.new(1, 0, 0, 25)
 flyTitle.BackgroundTransparency = 1
-flyTitle.TextColor3 = Color3.fromRGB(0, 255, 128)
+flyTitle.TextColor3 = Color3.fromRGB(100, 220, 150)
 flyTitle.TextSize = 11
-flyTitle.Font = Enum.Font.SourceSansBold
+flyTitle.Font = Enum.Font.GothamBold
 flyTitle.Text = translations["TR"].flyTitle
 flyTitle.Parent = flyFrame
 
 local function createMobBtn(text, pos, color)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 55, 0, 32)
+    btn.Size = UDim2.new(0, 60, 0, 35)
     btn.Position = pos
     btn.BackgroundColor3 = color
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.TextSize = 11
-    btn.Font = Enum.Font.SourceSansBold
+    btn.Font = Enum.Font.GothamBold
     btn.Text = text
     btn.Parent = flyFrame
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
     return btn
 end
 
-local upMobBtn = createMobBtn(translations["TR"].upMob, UDim2.new(0, 6, 0, 28), Color3.fromRGB(40, 120, 80))
-local downMobBtn = createMobBtn(translations["TR"].downMob, UDim2.new(0, 68, 0, 28), Color3.fromRGB(120, 40, 40))
+local upMobBtn = createMobBtn(translations["TR"].upMob, UDim2.new(0, 6, 0, 32), Color3.fromRGB(40, 140, 90))
+local downMobBtn = createMobBtn(translations["TR"].downMob, UDim2.new(0, 74, 0, 32), Color3.fromRGB(160, 50, 60))
 
 upMobBtn.MouseButton1Down:Connect(function() mobUpPressed = true end)
 upMobBtn.MouseButton1Up:Connect(function() mobUpPressed = false end)
@@ -246,312 +487,175 @@ downMobBtn.MouseButton1Down:Connect(function() mobDownPressed = true end)
 downMobBtn.MouseButton1Up:Connect(function() mobDownPressed = false end)
 downMobBtn.MouseLeave:Connect(function() mobDownPressed = false end)
 
-local tabContainer = Instance.new("Frame")
-tabContainer.Size = UDim2.new(1, -10, 0, 30)
-tabContainer.Position = UDim2.new(0, 5, 0, 38)
-tabContainer.BackgroundTransparency = 1
-tabContainer.Parent = frame
+local sidebar = Instance.new("ScrollingFrame")
+sidebar.Size = UDim2.new(0, 120, 1, -55)
+sidebar.Position = UDim2.new(0, 10, 0, 45)
+sidebar.BackgroundTransparency = 1
+sidebar.BorderSizePixel = 0
+sidebar.CanvasSize = UDim2.new(0, 0, 0, 360)
+sidebar.ScrollBarThickness = 2
+sidebar.Parent = frame
 
-local function createTabButton(text, xPos, width)
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0, 6)
+UIListLayout.Parent = sidebar
+
+local function createTabButton(text, order)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(width, 0, 1, 0)
-    btn.Position = UDim2.new(xPos, 0, 0, 0)
-    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.TextSize = 7.0
-    btn.Font = Enum.Font.SourceSansBold
+    btn.Size = UDim2.new(1, -6, 0, 36)
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 42)
+    btn.TextColor3 = Color3.fromRGB(180, 180, 200)
+    btn.TextSize = 12
+    btn.Font = Enum.Font.GothamMedium
     btn.Text = text
-    btn.Parent = tabContainer
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+    btn.LayoutOrder = order
+    btn.Parent = sidebar
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
     return btn
 end
 
-local homeTabBtn = createTabButton(translations["TR"].homeTab, 0, 0.135)
-local soundTabBtn = createTabButton(translations["TR"].soundTab, 0.140, 0.135)
-local platformTabBtn = createTabButton(translations["TR"].platformTab, 0.280, 0.145)
-local cheatsTabBtn = createTabButton(translations["TR"].cheatsTab, 0.430, 0.140)
-local trollTabBtn = createTabButton(translations["TR"].trollTab, 0.575, 0.135)
-local langTabBtn = createTabButton(translations["TR"].langTab, 0.715, 0.135)
-local guideTabBtn = createTabButton(translations["TR"].guideTab, 0.855, 0.140)
+local homeTabBtn = createTabButton(translations["TR"].homeTab, 1)
+local soundTabBtn = createTabButton(translations["TR"].soundTab, 2)
+local platformTabBtn = createTabButton(translations["TR"].platformTab, 3)
+local cheatsTabBtn = createTabButton(translations["TR"].cheatsTab, 4)
+local trollTabBtn = createTabButton(translations["TR"].trollTab, 5)
+local boredomTabBtn = createTabButton(translations["TR"].boredomTab, 6)
+local langTabBtn = createTabButton(translations["TR"].langTab, 7)
+local guideTabBtn = createTabButton(translations["TR"].guideTab, 8)
 
-local scrollingFrame = Instance.new("ScrollingFrame")
-scrollingFrame.Size = UDim2.new(1, -10, 1, -115)
-scrollingFrame.Position = UDim2.new(0, 5, 0, 75)
-scrollingFrame.BackgroundTransparency = 1
-scrollingFrame.BorderSizePixel = 0
-scrollingFrame.ScrollBarThickness = 6
-scrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-scrollingFrame.Parent = frame
+local contentContainer = Instance.new("Frame")
+contentContainer.Size = UDim2.new(1, -145, 1, -55)
+contentContainer.Position = UDim2.new(0, 135, 0, 45)
+contentContainer.BackgroundTransparency = 1
+contentContainer.Parent = frame
 
-local homePage = Instance.new("Frame")
-homePage.Size = UDim2.new(1, 0, 0, 150)
-homePage.BackgroundTransparency = 1
-homePage.Visible = true
-homePage.Parent = scrollingFrame
+local function createPage()
+    local p = Instance.new("ScrollingFrame")
+    p.Size = UDim2.new(1, 0, 1, 0)
+    p.BackgroundTransparency = 1
+    p.BorderSizePixel = 0
+    p.ScrollBarThickness = 4
+    p.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    p.Visible = false
+    p.Parent = contentContainer
+    local layout = Instance.new("UIListLayout")
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 8)
+    layout.Parent = p
+    return p
+end
 
-local homeWelcomeLabel = Instance.new("TextLabel")
-homeWelcomeLabel.Size = UDim2.new(1, -5, 0, 50)
-homeWelcomeLabel.Position = UDim2.new(0, 0, 0, 5)
-homeWelcomeLabel.BackgroundTransparency = 1
-homeWelcomeLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
-homeWelcomeLabel.TextSize = 10
-homeWelcomeLabel.Font = Enum.Font.SourceSansBold
-homeWelcomeLabel.TextXAlignment = Enum.TextXAlignment.Left
-homeWelcomeLabel.TextYAlignment = Enum.TextYAlignment.Top
-homeWelcomeLabel.TextWrapped = true
-homeWelcomeLabel.Text = translations["TR"].homeWelcome
-homeWelcomeLabel.Parent = homePage
+local homePage = createPage()
+local visualsPage = createPage()
+local soundPage = createPage()
+local platformPage = createPage()
+local cheatsPage = createPage()
+local trollPage = createPage()
+local boredomPage = createPage()
+local langPage = createPage()
+local guidePage = createPage()
 
-local deathNotifButton = Instance.new("TextButton")
-deathNotifButton.Size = UDim2.new(1, -5, 0, 38)
-deathNotifButton.Position = UDim2.new(0, 0, 0, 60)
-deathNotifButton.BackgroundColor3 = Color3.fromRGB(50, 140, 50)
-deathNotifButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-deathNotifButton.TextSize = 10
-deathNotifButton.Font = Enum.Font.SourceSansBold
-deathNotifButton.Text = translations["TR"].deathNotifOn
-deathNotifButton.Parent = homePage
-Instance.new("UICorner", deathNotifButton).CornerRadius = UDim.new(0, 6)
+local function createStyledLabel(parent, text)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -10, 0, 50)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = Color3.fromRGB(200, 200, 220)
+    lbl.TextSize = 12
+    lbl.Font = Enum.Font.GothamMedium
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.TextYAlignment = Enum.TextYAlignment.Top
+    lbl.TextWrapped = true
+    lbl.Text = text
+    lbl.Parent = parent
+    return lbl
+end
 
-local soundPage = Instance.new("Frame")
-soundPage.Size = UDim2.new(1, 0, 0, 190)
-soundPage.BackgroundTransparency = 1
-soundPage.Visible = false
-soundPage.Parent = scrollingFrame
+local function createStyledHeader(parent, text)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -10, 0, 30)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = Color3.fromRGB(120, 200, 255)
+    lbl.TextSize = 13
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Text = text
+    lbl.Parent = parent
+    return lbl
+end
 
-local platformPage = Instance.new("Frame")
-platformPage.Size = UDim2.new(1, 0, 0, 130)
-platformPage.BackgroundTransparency = 1
-platformPage.Visible = false
-platformPage.Parent = scrollingFrame
+local function createStyledButton(parent, text, color)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -10, 0, 38)
+    btn.BackgroundColor3 = color or Color3.fromRGB(40, 40, 55)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 12
+    btn.Font = Enum.Font.GothamBold
+    btn.Text = text
+    btn.Parent = parent
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+    return btn
+end
 
-local cheatsPage = Instance.new("Frame")
-cheatsPage.Size = UDim2.new(1, 0, 0, 170)
-cheatsPage.BackgroundTransparency = 1
-cheatsPage.Visible = false
-cheatsPage.Parent = scrollingFrame
+local function createStyledBox(parent, phText)
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(1, -10, 0, 38)
+    box.BackgroundColor3 = Color3.fromRGB(26, 26, 36)
+    box.TextColor3 = Color3.fromRGB(255, 255, 255)
+    box.PlaceholderText = phText
+    box.Text = ""
+    box.TextSize = 12
+    box.Font = Enum.Font.GothamMedium
+    box.ClearTextOnFocus = false
+    box.Parent = parent
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 8)
+    return box
+end
 
-local trollPage = Instance.new("Frame")
-trollPage.Size = UDim2.new(1, 0, 0, 70)
-trollPage.BackgroundTransparency = 1
-trollPage.Visible = false
-trollPage.Parent = scrollingFrame
+local homeWelcomeLabel = createStyledLabel(homePage, translations["TR"].homeWelcome)
+local deathHeaderLabel = createStyledHeader(homePage, translations["TR"].deathSectionTitle)
+local deathNotifButton = createStyledButton(homePage, translations["TR"].deathNotifOn, Color3.fromRGB(40, 140, 90))
 
-local walkFlingButton = Instance.new("TextButton")
-walkFlingButton.Size = UDim2.new(1, -5, 0, 38)
-walkFlingButton.Position = UDim2.new(0, 0, 0, 5)
-walkFlingButton.BackgroundColor3 = Color3.fromRGB(140, 50, 50)
-walkFlingButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-walkFlingButton.TextSize = 10
-walkFlingButton.Font = Enum.Font.SourceSansBold
-walkFlingButton.Text = translations["TR"].walkFlingOff
-walkFlingButton.Parent = trollPage
-Instance.new("UICorner", walkFlingButton).CornerRadius = UDim.new(0, 6)
+local visualsHeaderLabel = createStyledHeader(visualsPage, translations["TR"].visualsSectionTitle)
+local espMainButton = createStyledButton(visualsPage, translations["TR"].espMainOff, Color3.fromRGB(160, 60, 70))
+local espBoxButton = createStyledButton(visualsPage, translations["TR"].espBoxOn, Color3.fromRGB(40, 140, 90))
+local espNameButton = createStyledButton(visualsPage, translations["TR"].espNameOn, Color3.fromRGB(40, 140, 90))
+local espDistButton = createStyledButton(visualsPage, translations["TR"].espDistOn, Color3.fromRGB(40, 140, 90))
+local espTracerButton = createStyledButton(visualsPage, translations["TR"].espTracerOff, Color3.fromRGB(160, 60, 70))
 
-local langPage = Instance.new("Frame")
-langPage.Size = UDim2.new(1, 0, 1, 0)
-langPage.BackgroundTransparency = 1
-langPage.Visible = false
-langPage.Parent = scrollingFrame
+local xrayHeaderLabel = createStyledHeader(visualsPage, translations["TR"].xraySectionTitle)
+local xrayMainButton = createStyledButton(visualsPage, translations["TR"].xrayMainOff, Color3.fromRGB(160, 60, 70))
+local xrayTransparencyBox = createStyledBox(visualsPage, translations["TR"].xraySliderPh)
 
-local langTrBtn = Instance.new("TextButton")
-langTrBtn.Size = UDim2.new(1, -5, 0, 40)
-langTrBtn.Position = UDim2.new(0, 0, 0, 10)
-langTrBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-langTrBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-langTrBtn.TextSize = 13
-langTrBtn.Font = Enum.Font.SourceSansBold
-langTrBtn.Text = translations["TR"].langTrBtn
-langTrBtn.Parent = langPage
-Instance.new("UICorner", langTrBtn).CornerRadius = UDim.new(0, 6)
+local musicIdBox = createStyledBox(soundPage, translations["TR"].musicIdPh)
+local playMusicButton = createStyledButton(soundPage, translations["TR"].playMusic, Color3.fromRGB(90, 60, 160))
+local stopMusicButton = createStyledButton(soundPage, translations["TR"].stopMusic, Color3.fromRGB(160, 60, 90))
+local muteGameMusicButton = createStyledButton(soundPage, translations["TR"].muteGame, Color3.fromRGB(140, 90, 40))
+local unmuteGameMusicButton = createStyledButton(soundPage, translations["TR"].unmuteGame, Color3.fromRGB(40, 140, 90))
 
-local langEnBtn = Instance.new("TextButton")
-langEnBtn.Size = UDim2.new(1, -5, 0, 40)
-langEnBtn.Position = UDim2.new(0, 0, 0, 60)
-langEnBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-langEnBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-langEnBtn.TextSize = 13
-langEnBtn.Font = Enum.Font.SourceSansBold
-langEnBtn.Text = translations["TR"].langEnBtn
-langEnBtn.Parent = langPage
-Instance.new("UICorner", langEnBtn).CornerRadius = UDim.new(0, 6)
+local upButton = createStyledButton(platformPage, translations["TR"].upBtn, Color3.fromRGB(45, 45, 60))
+local downButton = createStyledButton(platformPage, translations["TR"].downBtn, Color3.fromRGB(45, 45, 60))
+local toggleButton = createStyledButton(platformPage, translations["TR"].platOff, Color3.fromRGB(160, 60, 70))
 
-local guidePage = Instance.new("Frame")
-guidePage.Size = UDim2.new(1, 0, 1, 0)
-guidePage.BackgroundTransparency = 1
-guidePage.Visible = false
-guidePage.Parent = scrollingFrame
+local speedBox = createStyledBox(cheatsPage, translations["TR"].speedPh)
+local noclipButton = createStyledButton(cheatsPage, translations["TR"].noclipOff, Color3.fromRGB(160, 60, 70))
+local flyButton = createStyledButton(cheatsPage, translations["TR"].flyOff, Color3.fromRGB(160, 60, 70))
+local holdJumpButton = createStyledButton(cheatsPage, translations["TR"].holdJumpOff, Color3.fromRGB(160, 60, 70))
 
-local guideLabel = Instance.new("TextLabel")
-guideLabel.Size = UDim2.new(1, -5, 1, 0)
-guideLabel.Position = UDim2.new(0, 0, 0, 5)
-guideLabel.BackgroundTransparency = 1
-guideLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
-guideLabel.TextSize = 10
-guideLabel.Font = Enum.Font.SourceSans
-guideLabel.TextXAlignment = Enum.TextXAlignment.Left
-guideLabel.TextYAlignment = Enum.TextYAlignment.Top
-guideLabel.TextWrapped = true
-guideLabel.Text = translations["TR"].guideText
-guideLabel.Parent = guidePage
+local walkFlingButton = createStyledButton(trollPage, translations["TR"].walkFlingOff, Color3.fromRGB(160, 60, 70))
+local sitTrollButton = createStyledButton(trollPage, translations["TR"].sitTrollOff, Color3.fromRGB(160, 60, 70))
 
-local musicIdBox = Instance.new("TextBox")
-musicIdBox.Size = UDim2.new(1, -5, 0, 32)
-musicIdBox.Position = UDim2.new(0, 0, 0, 5)
-musicIdBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-musicIdBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-musicIdBox.PlaceholderText = translations["TR"].musicIdPh
-musicIdBox.Text = ""
-musicIdBox.TextSize = 12
-musicIdBox.Font = Enum.Font.SourceSansBold
-musicIdBox.ClearTextOnFocus = false
-musicIdBox.Parent = soundPage
-Instance.new("UICorner", musicIdBox).CornerRadius = UDim.new(0, 6)
+local targetFocusHeader = createStyledHeader(trollPage, translations["TR"].targetFocusSectionTitle)
+local targetFocusBox = createStyledBox(trollPage, translations["TR"].targetDropdownPh)
+local targetFocusButton = createStyledButton(trollPage, translations["TR"].targetFocusBtnOff, Color3.fromRGB(160, 60, 70))
 
-local playMusicButton = Instance.new("TextButton")
-playMusicButton.Size = UDim2.new(1, -5, 0, 32)
-playMusicButton.Position = UDim2.new(0, 0, 0, 42)
-playMusicButton.BackgroundColor3 = Color3.fromRGB(80, 50, 140)
-playMusicButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-playMusicButton.TextSize = 12
-playMusicButton.Font = Enum.Font.SourceSansBold
-playMusicButton.Text = translations["TR"].playMusic
-playMusicButton.Parent = soundPage
-Instance.new("UICorner", playMusicButton).CornerRadius = UDim.new(0, 6)
+local powerfulTrampolineButton = createStyledButton(boredomPage, translations["TR"].trampolineOff, Color3.fromRGB(160, 60, 70))
 
-local stopMusicButton = Instance.new("TextButton")
-stopMusicButton.Size = UDim2.new(1, -5, 0, 32)
-stopMusicButton.Position = UDim2.new(0, 0, 0, 79)
-stopMusicButton.BackgroundColor3 = Color3.fromRGB(140, 50, 80)
-stopMusicButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-stopMusicButton.TextSize = 12
-stopMusicButton.Font = Enum.Font.SourceSansBold
-stopMusicButton.Text = translations["TR"].stopMusic
-stopMusicButton.Parent = soundPage
-Instance.new("UICorner", stopMusicButton).CornerRadius = UDim.new(0, 6)
+local langTrBtn = createStyledButton(langPage, translations["TR"].langTrBtn, Color3.fromRGB(35, 35, 48))
+local langEnBtn = createStyledButton(langPage, translations["TR"].langEnBtn, Color3.fromRGB(35, 35, 48))
 
-local muteGameMusicButton = Instance.new("TextButton")
-muteGameMusicButton.Size = UDim2.new(1, -5, 0, 32)
-muteGameMusicButton.Position = UDim2.new(0, 0, 0, 116)
-muteGameMusicButton.BackgroundColor3 = Color3.fromRGB(120, 80, 40)
-muteGameMusicButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-muteGameMusicButton.TextSize = 11
-muteGameMusicButton.Font = Enum.Font.SourceSansBold
-muteGameMusicButton.Text = translations["TR"].muteGame
-muteGameMusicButton.Parent = soundPage
-Instance.new("UICorner", muteGameMusicButton).CornerRadius = UDim.new(0, 6)
-
-local unmuteGameMusicButton = Instance.new("TextButton")
-unmuteGameMusicButton.Size = UDim2.new(1, -5, 0, 32)
-unmuteGameMusicButton.Position = UDim2.new(0, 0, 0, 153)
-unmuteGameMusicButton.BackgroundColor3 = Color3.fromRGB(40, 120, 80)
-unmuteGameMusicButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-unmuteGameMusicButton.TextSize = 11
-unmuteGameMusicButton.Font = Enum.Font.SourceSansBold
-unmuteGameMusicButton.Text = translations["TR"].unmuteGame
-unmuteGameMusicButton.Parent = soundPage
-Instance.new("UICorner", unmuteGameMusicButton).CornerRadius = UDim.new(0, 6)
-
-local upButton = Instance.new("TextButton")
-upButton.Size = UDim2.new(1, -5, 0, 35)
-upButton.Position = UDim2.new(0, 0, 0, 5)
-upButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-upButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-upButton.TextSize = 13
-upButton.Font = Enum.Font.SourceSansBold
-upButton.Text = translations["TR"].upBtn
-upButton.Parent = platformPage
-Instance.new("UICorner", upButton).CornerRadius = UDim.new(0, 6)
-
-local downButton = Instance.new("TextButton")
-downButton.Size = UDim2.new(1, -5, 0, 35)
-downButton.Position = UDim2.new(0, 0, 0, 45)
-downButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-downButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-downButton.TextSize = 13
-downButton.Font = Enum.Font.SourceSansBold
-downButton.Text = translations["TR"].downBtn
-downButton.Parent = platformPage
-Instance.new("UICorner", downButton).CornerRadius = UDim.new(0, 6)
-
-local toggleButton = Instance.new("TextButton")
-toggleButton.Size = UDim2.new(1, -5, 0, 35)
-toggleButton.Position = UDim2.new(0, 0, 0, 85)
-toggleButton.BackgroundColor3 = Color3.fromRGB(50, 140, 50)
-toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleButton.TextSize = 13
-toggleButton.Font = Enum.Font.SourceSansBold
-toggleButton.Text = translations["TR"].platOn
-toggleButton.Parent = platformPage
-Instance.new("UICorner", toggleButton).CornerRadius = UDim.new(0, 6)
-
-local speedBox = Instance.new("TextBox")
-speedBox.Size = UDim2.new(1, -5, 0, 35)
-speedBox.Position = UDim2.new(0, 0, 0, 5)
-speedBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-speedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-speedBox.PlaceholderText = translations["TR"].speedPh
-speedBox.Text = ""
-speedBox.TextSize = 13
-speedBox.Font = Enum.Font.SourceSansBold
-speedBox.ClearTextOnFocus = false
-speedBox.Parent = cheatsPage
-Instance.new("UICorner", speedBox).CornerRadius = UDim.new(0, 6)
-
-local noclipButton = Instance.new("TextButton")
-noclipButton.Size = UDim2.new(1, -5, 0, 35)
-noclipButton.Position = UDim2.new(0, 0, 0, 45)
-noclipButton.BackgroundColor3 = Color3.fromRGB(140, 50, 50)
-noclipButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-noclipButton.TextSize = 13
-noclipButton.Font = Enum.Font.SourceSansBold
-noclipButton.Text = translations["TR"].noclipOff
-noclipButton.Parent = cheatsPage
-Instance.new("UICorner", noclipButton).CornerRadius = UDim.new(0, 6)
-
-local flyButton = Instance.new("TextButton")
-flyButton.Size = UDim2.new(1, -5, 0, 35)
-flyButton.Position = UDim2.new(0, 0, 0, 85)
-flyButton.BackgroundColor3 = Color3.fromRGB(140, 50, 50)
-flyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-flyButton.TextSize = 13
-flyButton.Font = Enum.Font.SourceSansBold
-flyButton.Text = translations["TR"].flyOff
-flyButton.Parent = cheatsPage
-Instance.new("UICorner", flyButton).CornerRadius = UDim.new(0, 6)
-
-local holdJumpButton = Instance.new("TextButton")
-holdJumpButton.Size = UDim2.new(1, -5, 0, 35)
-holdJumpButton.Position = UDim2.new(0, 0, 0, 125)
-holdJumpButton.BackgroundColor3 = Color3.fromRGB(140, 50, 50)
-holdJumpButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-holdJumpButton.TextSize = 11
-holdJumpButton.Font = Enum.Font.SourceSansBold
-holdJumpButton.Text = translations["TR"].holdJumpOff
-holdJumpButton.Parent = cheatsPage
-Instance.new("UICorner", holdJumpButton).CornerRadius = UDim.new(0, 6)
-
-local closeButton = Instance.new("TextButton")
-closeButton.Size = UDim2.new(1, -45, 0, 30)
-closeButton.Position = UDim2.new(0, 5, 1, -35)
-closeButton.BackgroundColor3 = Color3.fromRGB(160, 40, 40)
-closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-closeButton.TextSize = 12
-closeButton.Font = Enum.Font.SourceSansBold
-closeButton.Text = translations["TR"].closeBtn
-closeButton.Parent = frame
-Instance.new("UICorner", closeButton).CornerRadius = UDim.new(0, 6)
-
-local resizeButton = Instance.new("TextButton")
-resizeButton.Size = UDim2.new(0, 32, 0, 30)
-resizeButton.Position = UDim2.new(1, -37, 1, -35)
-resizeButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-resizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-resizeButton.TextSize = 13
-resizeButton.Font = Enum.Font.SourceSansBold
-resizeButton.Text = "↔️"
-resizeButton.Parent = frame
-Instance.new("UICorner", resizeButton).CornerRadius = UDim.new(0, 6)
+local guideLabel = createStyledLabel(guidePage, translations["TR"].guideText)
+guideLabel.Size = UDim2.new(1, -10, 0, 220)
 
 local function updateLanguage(langCode)
     currentLang = langCode
@@ -563,11 +667,15 @@ local function updateLanguage(langCode)
     platformTabBtn.Text = t.platformTab
     cheatsTabBtn.Text = t.cheatsTab
     trollTabBtn.Text = t.trollTab
+    boredomTabBtn.Text = t.boredomTab
     langTabBtn.Text = t.langTab
     guideTabBtn.Text = t.guideTab
-    closeButton.Text = t.closeBtn
     
     homeWelcomeLabel.Text = t.homeWelcome
+    deathHeaderLabel.Text = t.deathSectionTitle
+    visualsHeaderLabel.Text = t.visualsSectionTitle
+    xrayHeaderLabel.Text = t.xraySectionTitle
+    
     musicIdBox.PlaceholderText = t.musicIdPh
     playMusicButton.Text = t.playMusic
     stopMusicButton.Text = t.stopMusic
@@ -583,7 +691,22 @@ local function updateLanguage(langCode)
     flyButton.Text = flyActive and t.flyOn or t.flyOff
     holdJumpButton.Text = holdJumpActive and t.holdJumpOn or t.holdJumpOff
     walkFlingButton.Text = walkFlingActive and t.walkFlingOn or t.walkFlingOff
+    sitTrollButton.Text = isSitTrollActive and t.sitTrollOn or t.sitTrollOff
     deathNotifButton.Text = deathNotificationEnabled and t.deathNotifOn or t.deathNotifOff
+    powerfulTrampolineButton.Text = powerfulTrampolineActive and t.trampolineOn or t.trampolineOff
+    
+    espMainButton.Text = espEnabled and t.espMainOn or t.espMainOff
+    espBoxButton.Text = espBoxEnabled and t.espBoxOn or t.espBoxOff
+    espNameButton.Text = espNameEnabled and t.espNameOn or t.espNameOff
+    espDistButton.Text = espDistanceEnabled and t.espDistOn or t.espDistOff
+    espTracerButton.Text = espTracersEnabled and t.espTracerOn or t.espTracerOff
+    
+    xrayMainButton.Text = xrayEnabled and t.xrayMainOn or t.xrayMainOff
+    xrayTransparencyBox.PlaceholderText = t.xraySliderPh
+    
+    targetFocusHeader.Text = t.targetFocusSectionTitle
+    targetFocusBox.PlaceholderText = t.targetDropdownPh
+    targetFocusButton.Text = targetFocusActive and t.targetFocusBtnOn or t.targetFocusBtnOff
     
     flyTitle.Text = t.flyTitle
     upMobBtn.Text = t.upMob
@@ -597,42 +720,275 @@ end
 langTrBtn.MouseButton1Click:Connect(function() updateLanguage("TR") end)
 langEnBtn.MouseButton1Click:Connect(function() updateLanguage("EN") end)
 
-local function switchTab(activeTab)
-    homePage.Visible = (activeTab == "home")
-    soundPage.Visible = (activeTab == "sound")
-    platformPage.Visible = (activeTab == "platform")
-    cheatsPage.Visible = (activeTab == "cheats")
-    trollPage.Visible = (activeTab == "troll")
-    langPage.Visible = (activeTab == "lang")
-    guidePage.Visible = (activeTab == "guide")
+local pages = {
+    home = homePage,
+    visuals = visualsPage,
+    sound = soundPage,
+    platform = platformPage,
+    cheats = cheatsPage,
+    troll = trollPage,
+    boredom = boredomPage,
+    lang = langPage,
+    guide = guidePage
+}
+
+local buttons = {
+    home = homeTabBtn,
+    sound = soundTabBtn,
+    platform = platformTabBtn,
+    cheats = cheatsTabBtn,
+    troll = trollTabBtn,
+    boredom = boredomTabBtn,
+    lang = langTabBtn,
+    guide = guideTabBtn
+}
+
+local function switchTab(activeTabKey)
+    for key, page in pairs(pages) do
+        page.Visible = (key == activeTabKey)
+    end
+    for key, btn in pairs(buttons) do
+        if key == activeTabKey then
+            btn.BackgroundColor3 = Color3.fromRGB(80, 70, 220)
+            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        else
+            btn.BackgroundColor3 = Color3.fromRGB(30, 30, 42)
+            btn.TextColor3 = Color3.fromRGB(180, 180, 200)
+        end
+    end
     
-    homeTabBtn.BackgroundColor3 = (activeTab == "home") and Color3.fromRGB(80, 80, 80) or Color3.fromRGB(40, 40, 40)
-    soundTabBtn.BackgroundColor3 = (activeTab == "sound") and Color3.fromRGB(80, 80, 80) or Color3.fromRGB(40, 40, 40)
-    platformTabBtn.BackgroundColor3 = (activeTab == "platform") and Color3.fromRGB(80, 80, 80) or Color3.fromRGB(40, 40, 40)
-    cheatsTabBtn.BackgroundColor3 = (activeTab == "cheats") and Color3.fromRGB(80, 80, 80) or Color3.fromRGB(40, 40, 40)
-    trollTabBtn.BackgroundColor3 = (activeTab == "troll") and Color3.fromRGB(80, 80, 80) or Color3.fromRGB(40, 40, 40)
-    langTabBtn.BackgroundColor3 = (activeTab == "lang") and Color3.fromRGB(80, 80, 80) or Color3.fromRGB(40, 40, 40)
-    guideTabBtn.BackgroundColor3 = (activeTab == "guide") and Color3.fromRGB(80, 80, 80) or Color3.fromRGB(40, 40, 40)
-    
-    if activeTab == "home" then scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 150)
-    elseif activeTab == "sound" then scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 190)
-    elseif activeTab == "platform" then scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 130)
-    elseif activeTab == "cheats" then scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 170)
-    elseif activeTab == "troll" then scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 70)
-    elseif activeTab == "lang" then scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 110)
-    elseif activeTab == "guide" then scrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 200)
+    topVisualsButton.Visible = (activeTabKey == "home")
+
+    if activeTabKey == "visuals" then
+        topVisualsButton.BackgroundColor3 = Color3.fromRGB(80, 70, 220)
+        topVisualsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    else
+        topVisualsButton.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+        topVisualsButton.TextColor3 = Color3.fromRGB(120, 200, 255)
     end
 end
 
 homeTabBtn.MouseButton1Click:Connect(function() switchTab("home") end)
+topVisualsButton.MouseButton1Click:Connect(function() switchTab("visuals") end)
 soundTabBtn.MouseButton1Click:Connect(function() switchTab("sound") end)
 platformTabBtn.MouseButton1Click:Connect(function() switchTab("platform") end)
 cheatsTabBtn.MouseButton1Click:Connect(function() switchTab("cheats") end)
 trollTabBtn.MouseButton1Click:Connect(function() switchTab("troll") end)
+boredomTabBtn.MouseButton1Click:Connect(function() switchTab("boredom") end)
 langTabBtn.MouseButton1Click:Connect(function() switchTab("lang") end)
 guideTabBtn.MouseButton1Click:Connect(function() switchTab("guide") end)
 
 switchTab("home")
+
+local function applyXray()
+    originalPartsData = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and not obj:IsDescendantOf(player.Character) and obj ~= platform and obj ~= trampolinePart then
+            originalPartsData[obj] = obj.Transparency
+            obj.Transparency = xrayTransparency
+        end
+    end
+end
+
+local function removeXray()
+    for obj, originalTrans in pairs(originalPartsData) do
+        if obj and obj.Parent then
+            obj.Transparency = originalTrans
+        end
+    end
+    originalPartsData = {}
+end
+
+xrayMainButton.MouseButton1Click:Connect(function()
+    xrayEnabled = not xrayEnabled
+    local t = translations[currentLang]
+    if xrayEnabled then
+        xrayMainButton.Text = t.xrayMainOn
+        xrayMainButton.BackgroundColor3 = Color3.fromRGB(40, 140, 90)
+        applyXray()
+    else
+        xrayMainButton.Text = t.xrayMainOff
+        xrayMainButton.BackgroundColor3 = Color3.fromRGB(160, 60, 70)
+        removeXray()
+    end
+end)
+
+xrayTransparencyBox.FocusLost:Connect(function()
+    local text = xrayTransparencyBox.Text
+    local val = tonumber(text)
+    if val then
+        xrayTransparency = math.clamp(val, 0, 1)
+        if xrayEnabled then
+            applyXray()
+        end
+    else
+        xrayTransparencyBox.Text = ""
+    end
+end)
+
+local function removeEspForPlayer(p)
+    if espObjects[p] then
+        if espObjects[p].Highlight then espObjects[p].Highlight:Destroy() end
+        if espObjects[p].Billboard then espObjects[p].Billboard:Destroy() end
+        if espObjects[p].TracerLine then espObjects[p].TracerLine:Remove() end
+        espObjects[p] = nil
+    end
+end
+
+local function setupEspForPlayer(p)
+    if p == player then return end
+    
+    local function createVisuals()
+        removeEspForPlayer(p)
+        if not espEnabled then return end
+        
+        local char = p.Character
+        if not char then return end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not root or not hum then return end
+        
+        local highlight = Instance.new("Highlight")
+        highlight.Adornee = char
+        highlight.FillColor = Color3.fromRGB(80, 70, 220)
+        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+        highlight.FillTransparency = 0.5
+        highlight.Enabled = espBoxEnabled
+        highlight.Parent = char
+        
+        local bill = Instance.new("BillboardGui")
+        bill.Name = "ESPBillboard"
+        bill.Adornee = root
+        bill.Size = UDim2.new(0, 200, 0, 50)
+        bill.StudsOffset = Vector3.new(0, 3, 0)
+        bill.AlwaysOnTop = true
+        bill.Parent = root
+        
+        local textLbl = Instance.new("TextLabel")
+        textLbl.Size = UDim2.new(1, 0, 1, 0)
+        textLbl.BackgroundTransparency = 1
+        textLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+        textLbl.TextSize = 13
+        textLbl.Font = Enum.Font.GothamBold
+        textLbl.TextStrokeTransparency = 0.5
+        textLbl.Parent = bill
+        
+        local tracer = Drawing.new("Line")
+        tracer.Visible = false
+        tracer.Color = Color3.fromRGB(80, 70, 220)
+        tracer.Thickness = 1.5
+        tracer.Transparency = 0.7
+        
+        espObjects[p] = {Highlight = highlight, Billboard = bill, Text = textLbl, TracerLine = tracer}
+    end
+    
+    p.CharacterAdded:Connect(function(newChar)
+        task.wait(1)
+        createVisuals()
+    end)
+    
+    if p.Character then
+        createVisuals()
+    end
+end
+
+for _, p in ipairs(Players:GetPlayers()) do
+    setupEspForPlayer(p)
+end
+
+Players.PlayerAdded:Connect(setupEspForPlayer)
+Players.PlayerRemoving:Connect(removeEspForPlayer)
+
+RunService.RenderStepped:Connect(function()
+    for p, data in pairs(espObjects) do
+        if p and p.Character and espEnabled then
+            local char = p.Character
+            local root = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if root and hum then
+                if data.Highlight then
+                    data.Highlight.Enabled = espBoxEnabled
+                end
+                
+                local txt = ""
+                if espNameEnabled then txt = p.Name end
+                if espDistanceEnabled and humanoidRootPart then
+                    local dist = math.floor((root.Position - humanoidRootPart.Position).Magnitude)
+                    txt = txt .. " [" .. dist .. "m]"
+                end
+                if data.Text then
+                    data.Text.Text = txt
+                    data.Text.Visible = (espNameEnabled or espDistanceEnabled)
+                end
+                
+                if data.TracerLine then
+                    if espTracersEnabled then
+                        local vector, onScreen = Camera:WorldToViewportPoint(root.Position)
+                        if onScreen then
+                            data.TracerLine.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                            data.TracerLine.To = Vector2.new(vector.X, vector.Y)
+                            data.TracerLine.Visible = true
+                        else
+                            data.TracerLine.Visible = false
+                        end
+                    else
+                        data.TracerLine.Visible = false
+                    end
+                end
+            else
+                if data.TracerLine then data.TracerLine.Visible = false end
+            end
+        else
+            if data and data.TracerLine then data.TracerLine.Visible = false end
+        end
+    end
+end)
+
+espMainButton.MouseButton1Click:Connect(function()
+    espEnabled = not espEnabled
+    local t = translations[currentLang]
+    if espEnabled then
+        espMainButton.Text = t.espMainOn
+        espMainButton.BackgroundColor3 = Color3.fromRGB(40, 140, 90)
+        for _, p in ipairs(Players:GetPlayers()) do
+            setupEspForPlayer(p)
+        end
+    else
+        espMainButton.Text = t.espMainOff
+        espMainButton.BackgroundColor3 = Color3.fromRGB(160, 60, 70)
+        for p, _ in pairs(espObjects) do
+            removeEspForPlayer(p)
+        end
+    end
+end)
+
+espBoxButton.MouseButton1Click:Connect(function()
+    espBoxEnabled = not espBoxEnabled
+    local t = translations[currentLang]
+    espBoxButton.Text = espBoxEnabled and t.espBoxOn or t.espBoxOff
+    espBoxButton.BackgroundColor3 = espBoxEnabled and Color3.fromRGB(40, 140, 90) or Color3.fromRGB(160, 60, 70)
+end)
+
+espNameButton.MouseButton1Click:Connect(function()
+    espNameEnabled = not espNameEnabled
+    local t = translations[currentLang]
+    espNameButton.Text = espNameEnabled and t.espNameOn or t.espNameOff
+    espNameButton.BackgroundColor3 = espNameEnabled and Color3.fromRGB(40, 140, 90) or Color3.fromRGB(160, 60, 70)
+end)
+
+espDistButton.MouseButton1Click:Connect(function()
+    espDistanceEnabled = not espDistanceEnabled
+    local t = translations[currentLang]
+    espDistButton.Text = espDistanceEnabled and t.espDistOn or t.espDistOff
+    espDistButton.BackgroundColor3 = espDistanceEnabled and Color3.fromRGB(40, 140, 90) or Color3.fromRGB(160, 60, 70)
+end)
+
+espTracerButton.MouseButton1Click:Connect(function()
+    espTracersEnabled = not espTracersEnabled
+    local t = translations[currentLang]
+    espTracerButton.Text = espTracersEnabled and t.espTracerOn or t.espTracerOff
+    espTracerButton.BackgroundColor3 = espTracersEnabled and Color3.fromRGB(40, 140, 90) or Color3.fromRGB(160, 60, 70)
+end)
 
 playMusicButton.MouseButton1Click:Connect(function()
     local text = musicIdBox.Text
@@ -667,15 +1023,120 @@ unmuteGameMusicButton.MouseButton1Click:Connect(function()
     end
 end)
 
-local function disablePlatform()
+local function setPlatformState(state)
+    isPlatformActive = state
+    local t = translations[currentLang]
     if isPlatformActive then
-        isPlatformActive = false
-        local t = translations[currentLang]
+        toggleButton.Text = t.platOn
+        toggleButton.BackgroundColor3 = Color3.fromRGB(40, 140, 90)
+        if humanoidRootPart then lockedHeight = humanoidRootPart.Position.Y - 3 end
+        createPlatform()
+    else
         toggleButton.Text = t.platOff
-        toggleButton.BackgroundColor3 = Color3.fromRGB(140, 50, 50)
+        toggleButton.BackgroundColor3 = Color3.fromRGB(160, 60, 70)
         if platform then platform:Destroy(); platform = nil end
     end
 end
+
+local function setNoclipState(state)
+    noclipActive = state
+    local t = translations[currentLang]
+    if noclipActive then
+        noclipButton.Text = t.noclipOn
+        noclipButton.BackgroundColor3 = Color3.fromRGB(40, 140, 90)
+        noclipConnection = RunService.Stepped:Connect(function()
+            if not character or not humanoidRootPart or isPlatformActive then return end
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = false end
+            end
+        end)
+    else
+        noclipButton.Text = t.noclipOff
+        noclipButton.BackgroundColor3 = Color3.fromRGB(160, 60, 70)
+        if noclipConnection then noclipConnection:Disconnect(); noclipConnection = nil end
+        if character and not walkFlingActive and not targetFocusActive then
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = true end
+            end
+        end
+    end
+end
+
+local function setTrampolineState(state)
+    powerfulTrampolineActive = state
+    local t = translations[currentLang]
+    if powerfulTrampolineActive then
+        powerfulTrampolineButton.Text = t.trampolineOn
+        powerfulTrampolineButton.BackgroundColor3 = Color3.fromRGB(40, 140, 90)
+        
+        if humanoidRootPart then
+            trampolinePart = Instance.new("Part")
+            trampolinePart.Size = Vector3.new(6, 1, 6)
+            trampolinePart.Anchored = true
+            trampolinePart.CanCollide = true
+            trampolinePart.Material = Enum.Material.Neon
+            trampolinePart.Color = Color3.fromRGB(20, 20, 20)
+            
+            local lookVector = humanoidRootPart.CFrame.LookVector
+            local spawnPos = humanoidRootPart.Position + (lookVector * 5) - Vector3.new(0, 2.5, 0)
+            trampolinePart.Position = spawnPos
+            trampolinePart.Parent = workspace
+            
+            trampolineConnection = trampolinePart.Touched:Connect(function(hit)
+                local hitChar = hit.Parent
+                local hitHum = hitChar:FindFirstChildOfClass("Humanoid")
+                local hitRoot = hitChar:FindFirstChild("HumanoidRootPart")
+                if hitHum and hitRoot then
+                    hitRoot.AssemblyLinearVelocity = Vector3.new(0, 350, 0)
+                end
+            end)
+        end
+    else
+        powerfulTrampolineButton.Text = t.trampolineOff
+        powerfulTrampolineButton.BackgroundColor3 = Color3.fromRGB(160, 60, 70)
+        if trampolineConnection then trampolineConnection:Disconnect(); trampolineConnection = nil end
+        if trampolinePart then trampolinePart:Destroy(); trampolinePart = nil end
+    end
+end
+
+powerfulTrampolineButton.MouseButton1Click:Connect(function()
+    if isSpawningLocked then return end
+    local targetState = not powerfulTrampolineActive
+    if targetState then
+        if isPlatformActive then setPlatformState(false) end
+        if noclipActive then setNoclipState(false) end
+    end
+    setTrampolineState(targetState)
+end)
+
+noclipButton.MouseButton1Click:Connect(function()
+    if isSpawningLocked then return end
+    local targetState = not noclipActive
+    if targetState then
+        if powerfulTrampolineActive then setTrampolineState(false) end
+        if isPlatformActive then setPlatformState(false) end
+    end
+    setNoclipState(targetState)
+end)
+
+toggleButton.MouseButton1Click:Connect(function()
+    if isSpawningLocked then return end
+    local targetState = not isPlatformActive
+    if targetState then
+        if powerfulTrampolineActive then setTrampolineState(false) end
+        if isSitTrollActive then
+            isSitTrollActive = false
+            sitTrollButton.Text = translations[currentLang].sitTrollOff
+            sitTrollButton.BackgroundColor3 = Color3.fromRGB(160, 60, 70)
+        end
+        if walkFlingActive then walkFlingButton.MouseButton1Click:Fire() end
+        if targetFocusActive then targetFocusButton.MouseButton1Click:Fire() end
+        if flyActive then flyButton.MouseButton1Click:Fire() end
+        if holdJumpActive then holdJumpButton.MouseButton1Click:Fire() end
+        if noclipActive then setNoclipState(false) end
+    end
+    setPlatformState(targetState)
+end)
 
 walkFlingButton.MouseButton1Click:Connect(function()
     if isSpawningLocked then return end
@@ -683,9 +1144,11 @@ walkFlingButton.MouseButton1Click:Connect(function()
     
     walkFlingActive = not walkFlingActive
     if walkFlingActive then
-        disablePlatform()
+        if targetFocusActive then targetFocusButton.MouseButton1Click:Fire() end
+        setPlatformState(false)
+        setTrampolineState(false)
         walkFlingButton.Text = t.walkFlingOn
-        walkFlingButton.BackgroundColor3 = Color3.fromRGB(50, 140, 50)
+        walkFlingButton.BackgroundColor3 = Color3.fromRGB(40, 140, 90)
         
         currentTargetIndex = 1
         targetFlingTimer = tick()
@@ -701,7 +1164,8 @@ walkFlingButton.MouseButton1Click:Connect(function()
             spinAngle = spinAngle + 150
             
             local playersList = {}
-            for _, otherPlayer in ipairs(Players:GetPlayers()) do
+            local otherPlayerSet = Players:GetPlayers()
+            for _, otherPlayer in ipairs(otherPlayerSet) do
                 if otherPlayer ~= player and otherPlayer.Character then
                     local otherRoot = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
                     if otherRoot then
@@ -731,7 +1195,7 @@ walkFlingButton.MouseButton1Click:Connect(function()
         end)
     else
         walkFlingButton.Text = t.walkFlingOff
-        walkFlingButton.BackgroundColor3 = Color3.fromRGB(140, 50, 50)
+        walkFlingButton.BackgroundColor3 = Color3.fromRGB(160, 60, 70)
         if walkFlingConnection then walkFlingConnection:Disconnect(); walkFlingConnection = nil end
         
         if character and not noclipActive then
@@ -742,27 +1206,129 @@ walkFlingButton.MouseButton1Click:Connect(function()
     end
 end)
 
+local targetFocusConnection = nil
+
+targetFocusBox.FocusLost:Connect(function()
+    local text = targetFocusBox.Text:lower()
+    if text == "" then
+        focusedTargetPlayer = nil
+        showCustomNotification("🎯 Hedef", "Hedef temizlendi!")
+        return
+    end
+    
+    local found = nil
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player and (p.Name:lower():sub(1, #text) == text or p.DisplayName:lower():sub(1, #text) == text) then
+            found = p
+            break
+        end
+    end
+    
+    if found then
+        focusedTargetPlayer = found
+        targetFocusBox.Text = found.Name
+        showCustomNotification("🎯 Hedef Seçildi", "Odaklanılan Oyuncu: " .. found.Name)
+    else
+        showCustomNotification("⚠️ Uyarı", "Böyle bir oyuncu bulunamadı!")
+        focusedTargetPlayer = nil
+    end
+end)
+
+targetFocusButton.MouseButton1Click:Connect(function()
+    if isSpawningLocked then return end
+    local t = translations[currentLang]
+    
+    targetFocusActive = not targetFocusActive
+    if targetFocusActive then
+        if not focusedTargetPlayer then
+            showCustomNotification("⚠️ Uyarı", "Önce bir hedef oyuncu adı yazıp Enter'a basın!")
+            targetFocusActive = false
+            return
+        end
+        
+        if walkFlingActive then walkFlingButton.MouseButton1Click:Fire() end
+        setPlatformState(false)
+        setTrampolineState(false)
+        
+        targetFocusButton.Text = t.targetFocusBtnOn
+        targetFocusButton.BackgroundColor3 = Color3.fromRGB(40, 140, 90)
+        
+        targetFocusConnection = RunService.RenderStepped:Connect(function()
+            if not character or not humanoidRootPart or not targetFocusActive then return end
+            if not focusedTargetPlayer or not focusedTargetPlayer.Character then return end
+            
+            local targetRoot = focusedTargetPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if targetRoot then
+                for _, part in ipairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") then part.CanCollide = false end
+                end
+                humanoidRootPart.CFrame = targetRoot.CFrame * CFrame.new(0, 3, 0)
+                humanoidRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            end
+        end)
+    else
+        targetFocusButton.Text = t.targetFocusBtnOff
+        targetFocusButton.BackgroundColor3 = Color3.fromRGB(160, 60, 70)
+        if targetFocusConnection then targetFocusConnection:Disconnect(); targetFocusConnection = nil end
+        
+        if character and not noclipActive then
+            for _, part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = true end
+            end
+        end
+    end
+end)
+
+local function sitPlayer(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then return end
+    local hum = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if hum then hum.Sit = true end
+end
+
+local function setupCharacterTouch(char)
+    local root = char:WaitForChild("HumanoidRootPart", 5)
+    if not root then return end
+    root.Touched:Connect(function(hit)
+        if not isSitTrollActive then return end
+        local hitChar = hit.Parent
+        local hitPlayer = Players:GetPlayerFromCharacter(hitChar)
+        if hitPlayer and hitPlayer ~= player then sitPlayer(hitPlayer) end
+    end)
+end
+
+if character then setupCharacterTouch(character) end
+player.CharacterAdded:Connect(setupCharacterTouch)
+
+sitTrollButton.MouseButton1Click:Connect(function()
+    if isSpawningLocked then return end
+    local t = translations[currentLang]
+    if not isSitTrollActive then
+        setPlatformState(false)
+        setTrampolineState(false)
+    end
+    isSitTrollActive = not isSitTrollActive
+    sitTrollButton.Text = isSitTrollActive and t.sitTrollOn or t.sitTrollOff
+    sitTrollButton.BackgroundColor3 = isSitTrollActive and Color3.fromRGB(40, 140, 90) or Color3.fromRGB(160, 60, 70)
+end)
+
 deathNotifButton.MouseButton1Click:Connect(function()
     local t = translations[currentLang]
     deathNotificationEnabled = not deathNotificationEnabled
-    if deathNotificationEnabled then
-        deathNotifButton.Text = t.deathNotifOn
-        deathNotifButton.BackgroundColor3 = Color3.fromRGB(50, 140, 50)
-    else
-        deathNotifButton.Text = t.deathNotifOff
-        deathNotifButton.BackgroundColor3 = Color3.fromRGB(140, 50, 50)
-    end
+    deathNotifButton.Text = deathNotificationEnabled and t.deathNotifOn or t.deathNotifOff
+    deathNotifButton.BackgroundColor3 = deathNotificationEnabled and Color3.fromRGB(40, 140, 90) or Color3.fromRGB(160, 60, 70)
 end)
 
 flyButton.MouseButton1Click:Connect(function()
     if isSpawningLocked then return end
     local t = translations[currentLang]
-    
+    if not flyActive then
+        setPlatformState(false)
+        setTrampolineState(false)
+    end
     flyActive = not flyActive
     if flyActive then
-        disablePlatform()
         flyButton.Text = t.flyOn
-        flyButton.BackgroundColor3 = Color3.fromRGB(50, 140, 50)
+        flyButton.BackgroundColor3 = Color3.fromRGB(40, 140, 90)
         flyControlGui.Enabled = true
         bg = Instance.new("BodyGyro")
         bg.P = 9e4
@@ -789,7 +1355,7 @@ flyButton.MouseButton1Click:Connect(function()
         end)
     else
         flyButton.Text = t.flyOff
-        flyButton.BackgroundColor3 = Color3.fromRGB(140, 50, 50)
+        flyButton.BackgroundColor3 = Color3.fromRGB(160, 60, 70)
         flyControlGui.Enabled = false
         mobUpPressed = false
         mobDownPressed = false
@@ -803,68 +1369,13 @@ end)
 holdJumpButton.MouseButton1Click:Connect(function()
     if isSpawningLocked then return end
     local t = translations[currentLang]
-    if flyActive then flyButton.MouseButton1Click:Fire() end
-    
+    if not holdJumpActive then
+        setPlatformState(false)
+        setTrampolineState(false)
+    end
     holdJumpActive = not holdJumpActive
-    if holdJumpActive then
-        disablePlatform()
-        holdJumpButton.Text = t.holdJumpOn
-        holdJumpButton.BackgroundColor3 = Color3.fromRGB(50, 140, 50)
-    else
-        holdJumpButton.Text = t.holdJumpOff
-        holdJumpButton.BackgroundColor3 = Color3.fromRGB(140, 50, 50)
-        isHoldingJump = false
-    end
-end)
-
-noclipButton.MouseButton1Click:Connect(function()
-    if isSpawningLocked then return end
-    local t = translations[currentLang]
-    
-    noclipActive = not noclipActive
-    if noclipActive then
-        disablePlatform()
-        noclipButton.Text = t.noclipOn
-        noclipButton.BackgroundColor3 = Color3.fromRGB(50, 140, 50)
-        noclipConnection = RunService.Stepped:Connect(function()
-            if not character or not humanoidRootPart or isPlatformActive then return end
-            for _, part in ipairs(character:GetDescendants()) do
-                if part:IsA("BasePart") then part.CanCollide = false end
-            end
-        end)
-    else
-        noclipButton.Text = t.noclipOff
-        noclipButton.BackgroundColor3 = Color3.fromRGB(140, 50, 50)
-        if noclipConnection then noclipConnection:Disconnect(); noclipConnection = nil end
-        if character then
-            for _, part in ipairs(character:GetDescendants()) do
-                if part:IsA("BasePart") then part.CanCollide = true end
-            end
-        end
-    end
-end)
-
-toggleButton.MouseButton1Click:Connect(function()
-    if isSpawningLocked then return end
-    local t = translations[currentLang]
-    
-    isPlatformActive = not isPlatformActive
-    if isPlatformActive then
-        toggleButton.Text = t.platOn
-        toggleButton.BackgroundColor3 = Color3.fromRGB(50, 140, 50)
-        
-        if walkFlingActive then walkFlingButton.MouseButton1Click:Fire() end
-        if flyActive then flyButton.MouseButton1Click:Fire() end
-        if holdJumpActive then holdJumpButton.MouseButton1Click:Fire() end
-        if noclipActive then noclipButton.MouseButton1Click:Fire() end
-
-        if humanoidRootPart then lockedHeight = humanoidRootPart.Position.Y - 3 end
-        createPlatform()
-    else
-        toggleButton.Text = t.platOff
-        toggleButton.BackgroundColor3 = Color3.fromRGB(140, 50, 50)
-        if platform then platform:Destroy(); platform = nil end
-    end
+    holdJumpButton.Text = holdJumpActive and t.holdJumpOn or t.holdJumpOff
+    holdJumpButton.BackgroundColor3 = holdJumpActive and Color3.fromRGB(40, 140, 90) or Color3.fromRGB(160, 60, 70)
 end)
 
 local function setupJumpButtonHook()
@@ -903,60 +1414,29 @@ end)
 RunService.RenderStepped:Connect(function()
     if holdJumpActive and humanoidRootPart and not isPlatformActive then
         if isHoldingJump or UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-            humanoidRootPart.Velocity = Vector3.new(humanoidRootPart.Velocity.X, 40, humanoidRootPart.Velocity.Z)
+            humanoidRootPart.AssemblyLinearVelocity = Vector3.new(humanoidRootPart.AssemblyLinearVelocity.X, 40, humanoidRootPart.AssemblyLinearVelocity.Z)
         end
     end
 end)
 
-local isResizing = false
-local resizeStartPos = Vector2.new(0, 0)
-local startSize = UDim2.new(0, 0, 0, 0)
-
-resizeButton.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        isResizing = true
-        resizeStartPos = input.Position
-        startSize = frame.Size
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if isResizing and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - resizeStartPos
-        local newWidth = math.clamp(startSize.X.Offset + delta.X, 190, 350)
-        local newHeight = math.clamp(startSize.Y.Offset + delta.Y, 220, 600)
-        frame.Size = UDim2.new(0, newWidth, 0, newHeight)
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        isResizing = false
-    end
-end)
-
+-- 👁️ GÖZ BUTONU (ÇİFT TIKLAMA MANTIĞI EKLENDİ) & MINIMIZE
 minimizeButton.MouseButton1Click:Connect(function()
     isMinimized = true
-    frame.Size = UDim2.new(0, 60, 0, 60)
-    titleLabel.Visible = false
-    tabContainer.Visible = false
-    scrollingFrame.Visible = false
-    closeButton.Visible = false
-    resizeButton.Visible = false
-    minimizeButton.Visible = false
-    eyeButton.Visible = true
+    frame.Visible = false
+    eyeControlGui.Enabled = true
 end)
 
+local lastClickTime = 0
 eyeButton.MouseButton1Click:Connect(function()
-    isMinimized = false
-    frame.Size = UDim2.new(0, 225, 0, 370)
-    titleLabel.Visible = true
-    tabContainer.Visible = true
-    scrollingFrame.Visible = true
-    closeButton.Visible = true
-    resizeButton.Visible = true
-    minimizeButton.Visible = true
-    eyeButton.Visible = false
+    local currentTime = tick()
+    if currentTime - lastClickTime <= 0.4 then -- 0.4 saniye içinde 2 kez tıklanırsa açılır
+        isMinimized = false
+        frame.Visible = true
+        eyeControlGui.Enabled = false
+        lastClickTime = 0
+    else
+        lastClickTime = currentTime
+    end
 end)
 
 player.CharacterAdded:Connect(function(newChar)
@@ -979,7 +1459,7 @@ player.CharacterAdded:Connect(function(newChar)
 end)
 
 speedBox.FocusLost:Connect(function()
-    if isSpawningLocked or isPlatformActive then return end
+    if isSpawningLocked then return end
     local text = speedBox.Text
     if text == "" or tonumber(text) == nil then
         savedWalkSpeed = 16
@@ -1006,20 +1486,28 @@ downButton.MouseLeave:Connect(function() movingDown = false end)
 
 local isRunning = true
 
-closeButton.MouseButton1Click:Connect(function()
+closeTopButton.MouseButton1Click:Connect(function()
     isRunning = false
     if noclipConnection then noclipConnection:Disconnect() end
     if flyConnection then flyConnection:Disconnect() end
     if walkFlingConnection then walkFlingConnection:Disconnect() end
-    for _, conn in pairs(deathConnections) do
-        if conn then conn:Disconnect() end
-    end
+    if targetFocusConnection then targetFocusConnection:Disconnect() end
+    if trampolineConnection then trampolineConnection:Disconnect() end
+    for _, conn in pairs(deathConnections) do if conn then conn:Disconnect() end end
+    for p, _ in pairs(espObjects) do removeEspForPlayer(p) end
+    removeXray()
     flyActive = false
     holdJumpActive = false
     walkFlingActive = false
+    targetFocusActive = false
+    isSitTrollActive = false
+    powerfulTrampolineActive = false
+    espEnabled = false
+    xrayEnabled = false
     isHoldingJump = false
     if bg then bg:Destroy() end
     if bv then bv:Destroy() end
+    if trampolinePart then trampolinePart:Destroy() end
     backgroundMusic:Stop()
     backgroundMusic:Destroy()
     if isMuted then
@@ -1034,6 +1522,7 @@ closeButton.MouseButton1Click:Connect(function()
     end
     if platform then platform:Destroy() end
     flyControlGui:Destroy()
+    eyeControlGui:Destroy()
     screenGui:Destroy()
 end)
 
@@ -1046,16 +1535,26 @@ RunService.RenderStepped:Connect(function(dt)
         end
         return
     end
+    
+    if humanoid and humanoid.WalkSpeed ~= savedWalkSpeed then 
+        humanoid.WalkSpeed = savedWalkSpeed 
+    end
+
     if not isPlatformActive then return end
-    if humanoid and humanoid.WalkSpeed ~= savedWalkSpeed then humanoid.WalkSpeed = savedWalkSpeed end
+    
     if humanoidRootPart and platform then
-        local currentX = humanoidRootPart.Position.X
-        local currentZ = humanoidRootPart.Position.Z
-        local charY = humanoidRootPart.Position.Y
+        local currentPos = humanoidRootPart.Position
+        local charY = currentPos.Y
         local platPos = platform.Position
-        if Vector2.new(platPos.X - currentX, platPos.Z - currentZ).Magnitude > 30 then
+        
+        if (Vector3.new(platPos.X, 0, platPos.Z) - Vector3.new(currentPos.X, 0, currentPos.Z)).Magnitude >= 30 then
             lockedHeight = charY - 3
+            local lookVector = humanoidRootPart.CFrame.LookVector
+            local newPlatformPos = currentPos + (lookVector * 5) - Vector3.new(0, 3, 0)
+            platform.CFrame = CFrame.new(newPlatformPos.X, lockedHeight, newPlatformPos.Z)
+            return
         end
+        
         local raycastParams = RaycastParams.new()
         raycastParams.FilterType = Enum.RaycastFilterType.Exclude
         raycastParams.FilterDescendantsInstances = {character, platform}
@@ -1063,13 +1562,13 @@ RunService.RenderStepped:Connect(function(dt)
             if noclipActive then
                 lockedHeight = lockedHeight + (25 * dt)
             else
-                local headPos = humanoidRootPart.Position + Vector3.new(0, 2.5, 0)
+                local headPos = currentPos + Vector3.new(0, 2.5, 0)
                 if not workspace:Raycast(headPos, Vector3.new(0, 0.8, 0), raycastParams) then
                     lockedHeight = lockedHeight + (25 * dt)
                 end
             end
         elseif movingDown then
-            local groundRay = workspace:Raycast(humanoidRootPart.Position, Vector3.new(0, -50, 0), raycastParams)
+            local groundRay = workspace:Raycast(currentPos, Vector3.new(0, -50, 0), raycastParams)
             if groundRay then
                 local groundLimit = charY - 6
                 if lockedHeight > groundLimit then
@@ -1080,8 +1579,7 @@ RunService.RenderStepped:Connect(function(dt)
                 lockedHeight = lockedHeight - (25 * dt)
             end
         end
-    end
-    if platform then
-        platform.CFrame = CFrame.new(humanoidRootPart.Position.X, lockedHeight, humanoidRootPart.Position.Z)
+        
+        platform.CFrame = CFrame.new(currentPos.X, lockedHeight, currentPos.Z)
     end
 end)
